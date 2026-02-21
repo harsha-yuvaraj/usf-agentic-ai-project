@@ -56,15 +56,24 @@ To use the search tool:
 TAVILY_API_KEY=your-api-key
 ```
 
+#### E2B
+
+To use the code execution tool:
+1. Sign up for an [E2B API key](https://e2b.dev/sign-in).
+2. Once you have your API key, add it to your `.env` file:
+```
+E2B_API_KEY=your-api-key
+```
+
 ### Configure the Default Model
 
-Default `model`:
+The current __default__ model is:
 
-```yaml
+```shell
 gpt-5-nano-2025-08-07
 ```
 
-To change default model, update the `.env` file:
+To __switch__ the model, update the `.env` file:
 
 ```
 MODEL={provider}/{model}
@@ -82,6 +91,7 @@ MODEL=ollama/qwen3:8b
 ```
 
 Remember not all ollama models have tool capabilities!
+Check the [Ollama Documentation](https://docs.ollama.com/) for details.
 
 ### Start the development agent server
 

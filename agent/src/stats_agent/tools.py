@@ -10,6 +10,7 @@ from typing import Any, Callable, List, Optional, cast
 
 from langchain_tavily import TavilySearch
 from langgraph.runtime import get_runtime
+from e2b_code_interpreter import Sandbox
 
 from stats_agent.context import Context
 
@@ -25,5 +26,17 @@ async def search(query: str) -> Optional[dict[str, Any]]:
     wrapped = TavilySearch(max_results=runtime.context.max_search_results)
     return cast(dict[str, Any], await wrapped.ainvoke({"query": query}))
 
+def execude_code(code: str) -> Optional[dict[str, Any]]:
+    """Execute python code in an isolated environment.
 
-TOOLS: List[Callable[..., Any]] = [search]
+    This function creates an isolated environment using E2B then
+    loads the code into the sandboxed environment, executes code,
+    and returns the result
+    """
+    with Sandbox.create() as sandbox:
+        execution = sandbox.run_code(code)
+        result = execution.text
+    return cast(dict[str, Any], {"result": result})
+
+
+TOOLS: List[Callable[..., Any]] = [search, execude_code]

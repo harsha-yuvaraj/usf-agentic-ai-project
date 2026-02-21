@@ -17,6 +17,8 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "langchain-tavily>=0.1",
     "langchain-ollama>=1.0.1",
+    "e2b>=2.13.3",
+    "e2b-code-interpreter>=2.4.1",
 ]
 
 
