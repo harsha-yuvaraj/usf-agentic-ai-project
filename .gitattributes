@@ -1,0 +1,41 @@
+# --- Normalize all text files ---
+# This prevents Windows CRLF vs Mac/Linux LF churn
+* text=auto eol=lf
+
+# --- Source code ---
+*.dart   text eol=lf
+*.py     text eol=lf
+*.json   text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf
+*.md     text eol=lf
+*.txt    text eol=lf
+*.toml   text eol=lf
+
+# --- Flutter / C++ desktop plugin files (the annoying ones) ---
+*.cc     text eol=lf
+*.cpp    text eol=lf
+*.h      text eol=lf
+*.cmake  text eol=lf
+*.swift  text eol=lf
+*.kt     text eol=lf
+*.gradle text eol=lf
+
+# --- Shell scripts ---
+*.sh     text eol=lf
+
+# --- Windows scripts keep CRLF ---
+*.bat    text eol=crlf
+*.ps1    text eol=crlf
+
+# --- Binary files (never modify line endings) ---
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.so  binary

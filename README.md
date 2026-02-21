@@ -111,7 +111,12 @@ flutter doctor
 cd app
 ```
 
-2. Run the Flutter app and target the Chrome device (web).
+2. Install packages
+```bash
+flutter pub get
+```
+
+3. Run the Flutter app and target the Chrome device (web).
 ```bash
 flutter run -d chrome
 ```
