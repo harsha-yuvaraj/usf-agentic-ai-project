@@ -64,23 +64,24 @@ Default `model`:
 gpt-5-nano-2025-08-07
 ```
 
-To change the model, edit:
+To change default model, update the `.env` file:
 
-```yaml
-agent/src/stats_agent/context.py
+```
+MODEL={provider}/{model}
 ```
 
-For example change:
-
-```python
-    default="openai/gpt-5-nano-2025-08-07",
+The available providers are:
+```
+openai, anthropic, ollama
 ```
 
-to 
+For example, to use an ollama model you would:
 
-```python
-    default="anthropic/claude-3-haiku"
 ```
+MODEL=ollama/qwen3:8b
+```
+
+Remember not all ollama models have tool capabilities!
 
 ### Start the development agent server
 
