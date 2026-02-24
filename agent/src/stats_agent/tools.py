@@ -26,7 +26,7 @@ async def search(query: str) -> Optional[dict[str, Any]]:
     wrapped = TavilySearch(max_results=runtime.context.max_search_results)
     return cast(dict[str, Any], await wrapped.ainvoke({"query": query}))
 
-def execude_code(code: str) -> Optional[dict[str, Any]]:
+def execute_code(code: str) -> Optional[dict[str, Any]]:
     """Execute python code in an isolated environment.
 
     This function creates an isolated environment using E2B then
@@ -39,4 +39,4 @@ def execude_code(code: str) -> Optional[dict[str, Any]]:
     return cast(dict[str, Any], {"result": result})
 
 
-TOOLS: List[Callable[..., Any]] = [search, execude_code]
+TOOLS: List[Callable[..., Any]] = [search, execute_code]
