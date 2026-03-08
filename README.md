@@ -70,7 +70,7 @@ E2B_API_KEY=your-api-key
 The current __default__ model is:
 
 ```
-provider/gpt-5-nano-2025-08-07
+openai/gpt-5-nano-2025-08-07
 ```
 
 To __switch__ the model, update the `.env` file:
