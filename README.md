@@ -65,12 +65,12 @@ To use the code execution tool:
 E2B_API_KEY=your-api-key
 ```
 
-### Configure the Default Model
+### Configure Model and Provider for Inference
 
 The current __default__ model is:
 
-```shell
-gpt-5-nano-2025-08-07
+```
+provider/gpt-5-nano-2025-08-07
 ```
 
 To __switch__ the model, update the `.env` file:
@@ -80,9 +80,12 @@ MODEL={provider}/{model}
 ```
 
 The available providers are:
-```
-openai, anthropic, ollama
-```
+
+- openai
+- anthropic
+- ollama
+- unsloth (locally hosted model served with llama.cpp via OpenAI-compatible API)
+
 
 For example, to use an ollama model you would:
 
@@ -90,8 +93,14 @@ For example, to use an ollama model you would:
 MODEL=ollama/qwen3:8b
 ```
 
+#### Local Models Notes (ollama, unsloth):
 Remember not all ollama models have tool capabilities!
 Check the [Ollama Documentation](https://docs.ollama.com/) for details.
+
+The unsloth provider is not an external API provider.
+It is a routing label used by this project to connect to a locally hosted model served with llama.cpp via its OpenAI-compatible API.
+
+
 
 ### Start the development agent server
 

@@ -3,6 +3,19 @@
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
+from langchain_openai import ChatOpenAI
+
+_LOCAL_PROVIDERS = {"unsloth"}
+
+def _get_local_model(model: str, provider: str) -> BaseChatModel:
+    """Get a locally hosted model"""
+    if provider == "unsloth":
+        return ChatOpenAI(
+                model=f"unsloth/{model}",
+                base_url="http://127.0.0.1:8080/v1",
+                api_key="sk-no-key-required",
+            )
+    raise ValueError(f"Unknown provider: {provider}")
 
 
 def get_message_text(msg: BaseMessage) -> str:
@@ -23,5 +36,8 @@ def load_chat_model(fully_specified_name: str) -> BaseChatModel:
     Args:
         fully_specified_name (str): String in the format 'provider/model'.
     """
+
     provider, model = fully_specified_name.split("/", maxsplit=1)
+    if provider in _LOCAL_PROVIDERS:
+        return _get_local_model(model, provider)
     return init_chat_model(model, model_provider=provider)
