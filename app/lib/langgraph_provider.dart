@@ -4,11 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_ai_toolkit/flutter_ai_toolkit.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:logger/web.dart';
+
 /// LlmProvider implementation backed by a LangGraph local/dev server.
 /// Works with LlmChatView without FirebaseProvider.
 class LangGraphProvider extends LlmProvider with ChangeNotifier {
   LangGraphProvider({
     required this.baseUrl,
+    required FirebaseStorage storage,
     this.assistantId = 'agent',
     this.apiKey,
     Iterable<ChatMessage>? history,
@@ -16,12 +20,14 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     http.Client? httpClient,
   }) : _history = List<ChatMessage>.from(history ?? []),
        _threadId = threadId,
-       _client = httpClient ?? http.Client();
+       _client = httpClient ?? http.Client(),
+       _storage = storage;
 
   final String baseUrl;
   final String assistantId;
   final String? apiKey;
   final http.Client _client;
+  final FirebaseStorage _storage;
 
   final List<ChatMessage> _history;
   String? _threadId;
@@ -83,9 +89,10 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
         'messages': [
           {
             'role': 'user',
-            'content': _composePrompt(prompt, attachments),
+            'content': prompt,
           },
         ],
+        'file_names': await _handleAttachments(attachments)
       },
     };
 
@@ -145,21 +152,33 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     return headers;
   }
 
-  String _composePrompt(String prompt, Iterable<Attachment> attachments) {
-    if (attachments.isEmpty) return prompt;
-
-    final attachmentSummary = attachments
-        .map((a) => switch (a) {
-              FileAttachment(:final name, :final mimeType) =>
-                'file(name: $name, mime: $mimeType)',
-              LinkAttachment(:final name, :final url) =>
-                'link(name: $name, url: $url)',
-            })
-        .join(', ');
-
-    return '$prompt\n\nAttachments: $attachmentSummary';
+Future<void> _uploadAttachment(Attachment attachment) async{
+    if (attachment is FileAttachment) {
+      final ref = _storage.ref().child('attachments/${attachment.name}');
+      await ref.putData(attachment.bytes, SettableMetadata(contentType: attachment.mimeType));
+    } else if (attachment is LinkAttachment) {
+      // For LinkAttachment, you might want to store the link in a database or handle it differently.
+      // Here, we just log the link for demonstration purposes.
+      Logger().log(Level.debug, 'Link attachment: ${attachment.url}');
+    } else {
+      throw Exception('Unsupported attachment type: ${attachment.runtimeType}');
+    }
   }
 
+  Future<List> _handleAttachments(Iterable<Attachment> attachments) async {
+    if (attachments.isEmpty) return [];
+
+    final summaries = await Future.wait(
+      attachments.map((a) async {
+        await _uploadAttachment(a);
+        Logger().log(Level.debug, 'Uploaded attachment: ${a.name}');
+        return a.name;
+      }),
+    );
+
+    return summaries;
+
+  }
   String _extractText(dynamic responseJson) {
     if (responseJson is! Map<String, dynamic>) return '';
 

@@ -14,7 +14,7 @@ from langgraph.runtime import Runtime
 from stats_agent.context import Context
 from stats_agent.state import InputState, State
 from stats_agent.tools import TOOLS
-from stats_agent.utils import load_chat_model
+from stats_agent.utils import load_chat_model, download_file
 
 # Define the function that calls the model
 
@@ -38,9 +38,10 @@ async def call_model(
 
     # Format the system prompt. Customize this to change the agent's behavior.
     system_message = runtime.context.system_prompt.format(
-        system_time=datetime.now(tz=UTC).isoformat()
+        system_time=datetime.now(tz=UTC).isoformat(),
+        file_names=state.file_names,
     )
-
+    
     # Get the model's response
     response = cast( # type: ignore[redundant-cast]
         AIMessage,
