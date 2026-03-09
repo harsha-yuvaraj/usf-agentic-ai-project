@@ -52,7 +52,7 @@ async def download_file(object_path: str) -> bytes:
     Returns: file bytes
     """
     
-    FUNCTION_URL = "http://127.0.0.1:5001/stats-agent-4a718/us-central1/getStorageData"
+    FUNCTION_URL = "http://127.0.0.1:5001/stats-agent-4a718/us-central1/getFile"
     async with httpx.AsyncClient() as client:
         response = await client.get(
             FUNCTION_URL,
