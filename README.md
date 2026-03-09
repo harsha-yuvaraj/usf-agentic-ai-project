@@ -101,7 +101,19 @@ The unsloth provider is not an external API provider.
 It is a routing label used by this project to connect to a locally hosted model served with llama.cpp via its OpenAI-compatible API.
 
 
-### Firebase for Storage
+### Start the development agent server
+
+1. Install the packages
+```bash
+uv sync
+```
+
+2. Start the server
+```bash 
+uv run langgraph dev
+```
+
+## Firebase for File Storage
 1. Install Node: [Link](https://nodejs.org/en/download)
 2. Install Firebase CLI (recommend using NPM): [Link](https://firebase.google.com/docs/cli)
 3. Log in: 
@@ -122,21 +134,6 @@ cd ..
 ```
 firebase emulators:start
 ```
-
-
-
-### Start the development agent server
-
-1. Install the packages
-```bash
-uv sync
-```
-
-2. Start the server
-```bash 
-uv run langgraph dev
-```
-
 
 ## Frontend (Flutter Web)
 
