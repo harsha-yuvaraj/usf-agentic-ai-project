@@ -54,7 +54,8 @@ async def execute_code(code: str, file_names: List[str]) -> Optional[dict[str, A
         )
         for name in file_names:
             data = await download_file(f'attachments/{name}')
-            sandbox.files.write(name, data)
+            info = sandbox.files.write(name, data)
+            print(f'Wrote file {info.name} to sandbox: {info.path}')
             
         execution = sandbox.run_code(code)
         if execution.error:
