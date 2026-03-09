@@ -101,6 +101,28 @@ The unsloth provider is not an external API provider.
 It is a routing label used by this project to connect to a locally hosted model served with llama.cpp via its OpenAI-compatible API.
 
 
+### Firebase for Storage
+1. Install Firebase CLI: [Link](https://firebase.google.com/docs/cli)
+2. Log in: 
+```
+firebase login
+```
+3. Install dependencies (need to be in services/function):
+```
+cd services/functions
+```
+```
+npm install
+```
+```
+cd ..
+```
+5. Start emulators (need to be services):
+```
+firebase emulators:start
+```
+
+
 
 ### Start the development agent server
 
