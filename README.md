@@ -127,10 +127,15 @@ cd services/functions
 ```
 npm install
 ```
+5. Build project
+```
+npm run build
+```
+
+6. Start emulators (need to be `services`):
 ```
 cd ..
 ```
-5. Start emulators (need to be `services`):
 ```
 firebase emulators:start
 ```
