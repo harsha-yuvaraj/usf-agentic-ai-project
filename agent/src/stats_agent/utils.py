@@ -4,6 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
+import httpx
 
 _LOCAL_PROVIDERS = {"unsloth"}
 
@@ -41,3 +42,23 @@ def load_chat_model(fully_specified_name: str) -> BaseChatModel:
     if provider in _LOCAL_PROVIDERS:
         return _get_local_model(model, provider)
     return init_chat_model(model, model_provider=provider)
+
+
+
+async def download_file(object_path: str) -> bytes:
+    """
+    Download a file from Firebase Storage.
+    Input: object_path (example: attachments/file.pdf)
+    Returns: file bytes
+    """
+    
+    FUNCTION_URL = "http://127.0.0.1:5001/stats-agent-4a718/us-central1/getStorageData"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            FUNCTION_URL,
+            params={"path": object_path},
+            timeout=60,
+        )
+
+        response.raise_for_status()
+        return response.content

@@ -5,6 +5,7 @@ import 'package:flutter_ai_toolkit/flutter_ai_toolkit.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:logger/web.dart';
 
 /// LlmProvider implementation backed by a LangGraph local/dev server.
 /// Works with LlmChatView without FirebaseProvider.
@@ -91,7 +92,7 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
             'content': prompt,
           },
         ],
-        'attachments': await _handleAttachments(attachments)
+        'file_names': await _handleAttachments(attachments)
       },
     };
 
@@ -151,14 +152,14 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     return headers;
   }
 
-Future<String> _uploadAttachment(Attachment attachment) async{
+Future<void> _uploadAttachment(Attachment attachment) async{
     if (attachment is FileAttachment) {
       final ref = _storage.ref().child('attachments/${attachment.name}');
       await ref.putData(attachment.bytes, SettableMetadata(contentType: attachment.mimeType));
-
-      return 'attachments/${attachment.name}';
     } else if (attachment is LinkAttachment) {
-      return attachment.url.toString();
+      // For LinkAttachment, you might want to store the link in a database or handle it differently.
+      // Here, we just log the link for demonstration purposes.
+      Logger().log(Level.debug, 'Link attachment: ${attachment.url}');
     } else {
       throw Exception('Unsupported attachment type: ${attachment.runtimeType}');
     }
@@ -169,8 +170,9 @@ Future<String> _uploadAttachment(Attachment attachment) async{
 
     final summaries = await Future.wait(
       attachments.map((a) async {
-        final path = await _uploadAttachment(a);
-        return path;
+        await _uploadAttachment(a);
+        Logger().log(Level.debug, 'Uploaded attachment: ${a.name}');
+        return a.name;
       }),
     );
 

@@ -1,86 +1,37 @@
-import functions from 'firebase-functions';
-import admin from 'firebase-admin';
+import { onRequest } from "firebase-functions/v2/https";
+import { initializeApp } from "firebase-admin/app";
+import { getStorage } from "firebase-admin/storage";
 
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
+initializeApp();
 
-/**
- * Firebase Cloud Function to retrieve data from Firebase Storage
- * 
- * Usage:
- * HTTP GET: https://your-region-your-project.cloudfunctions.net/getStorageData?path=folder/file.txt
- * HTTP POST: { "path": "folder/file.txt" }
- * 
- * Optional parameters:
- * - download: Set to 'true' to force download instead of inline display
- * - signedUrl: Set to 'true' to return a signed URL instead of the file content
- */
-exports.getStorageData = functions.https.onRequest(async (req, res) => {
-  // Enable CORS
-  res.set('Access-Control-Allow-Origin', '*');
-  
-  if (req.method === 'OPTIONS') {
-    res.set('Access-Control-Allow-Methods', 'GET, POST');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-    res.set('Access-Control-Max-Age', '3600');
-    res.status(204).send('');
-    return;
-  }
-
+export const getFile = onRequest(async (req, res) => {
   try {
-    // Get the file path from query params or request body
-    const filePath = req.query.path || req.body?.path;
-    
-    if (!filePath) {
-      res.status(400).json({ 
-        error: 'Missing required parameter: path' 
-      });
+    const objectPath = req.query.path || req.body.path;
+
+    if (!objectPath) {
+      res.status(400).send("Missing 'path' parameter");
       return;
     }
 
-    // Get reference to the storage bucket
-    const bucket = admin.storage().bucket();
-    const file = bucket.file(filePath);
+    const bucket = getStorage().bucket();
+    const file = bucket.file(objectPath);
 
-    // Check if file exists
     const [exists] = await file.exists();
+
     if (!exists) {
-      res.status(404).json({ 
-        error: 'File not found',
-        path: filePath 
-      });
+      res.status(404).send("File not found");
       return;
     }
 
-    // Get file metadata
     const [metadata] = await file.getMetadata();
 
+    res.setHeader("Content-Type", metadata.contentType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${metadata.name}"`);
 
-    // Download and return the file content
-    const [fileContents] = await file.download();
-
-    // Set appropriate headers
-    res.set('Content-Type', metadata.contentType || 'application/octet-stream');
-    res.set('Content-Length', (metadata.size ?? 0).toString());
-    
-    // Force download or inline display
-    if (req.query.download === 'true' || req.body?.download === true) {
-      res.set('Content-Disposition', `attachment; filename="${metadata.name}"`);
-    } else {
-      res.set('Content-Disposition', `inline; filename="${metadata.name}"`);
-    }
-
-    // Return the file content
-    res.status(200).send(fileContents);
+    file.createReadStream().pipe(res);
 
   } catch (error) {
-    console.error('Error retrieving file from Storage:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error 
-    });
+    console.error(error);
+    res.status(500).send("Error retrieving file");
   }
 });
-
