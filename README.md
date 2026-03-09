@@ -102,12 +102,13 @@ It is a routing label used by this project to connect to a locally hosted model 
 
 
 ### Firebase for Storage
-1. Install Firebase CLI: [Link](https://firebase.google.com/docs/cli)
-2. Log in: 
+1. Install Node: [Link](https://nodejs.org/en/download)
+2. Install Firebase CLI (recommend using NPM): [Link](https://firebase.google.com/docs/cli)
+3. Log in: 
 ```
 firebase login
 ```
-3. Install dependencies (need to be in services/function):
+4. Install dependencies (need to be in 'services/function'):
 ```
 cd services/functions
 ```
@@ -117,7 +118,7 @@ npm install
 ```
 cd ..
 ```
-5. Start emulators (need to be services):
+5. Start emulators (need to be 'services'):
 ```
 firebase emulators:start
 ```
