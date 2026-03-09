@@ -108,7 +108,7 @@ It is a routing label used by this project to connect to a locally hosted model 
 ```
 firebase login
 ```
-4. Install dependencies (need to be in 'services/function'):
+4. Install dependencies (need to be in `services/functions`):
 ```
 cd services/functions
 ```
@@ -118,7 +118,7 @@ npm install
 ```
 cd ..
 ```
-5. Start emulators (need to be 'services'):
+5. Start emulators (need to be `services`):
 ```
 firebase emulators:start
 ```
