@@ -69,3 +69,6 @@ dev = [
     "langgraph-cli[inmem]>=0.4.10",
     "pytest>=8.3.5",
 ]
+
+[project.scripts]
+delete_thread = "stats_agent.delete_thread:main" 
