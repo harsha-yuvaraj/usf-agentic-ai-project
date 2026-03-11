@@ -9,8 +9,8 @@ import 'package:logger/logger.dart';
 
 class LangGraphProvider extends LlmProvider with ChangeNotifier {
   LangGraphProvider({
-    required this.baseUrl,
     required FirebaseStorage storage,
+    this.baseUrl = 'http://127.0.0.1:2024',
     this.assistantId = 'agent',
     this.apiKey,
     Iterable<ChatMessage>? history,

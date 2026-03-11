@@ -110,7 +110,7 @@ uv sync
 
 2. Start the server
 ```bash 
-uv run langgraph dev --allow-blocking  
+uv run langgraph dev
 ```
 
 ## Firebase for File Storage
