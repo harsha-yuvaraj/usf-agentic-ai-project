@@ -7,14 +7,17 @@ consider implementing more robust and specialized tools tailored to your needs.
 """
 
 
+import json
 from typing import Any, Callable, List, Optional, cast
 
 
 from langchain_tavily import TavilySearch
 from langgraph.runtime import get_runtime
 from e2b_code_interpreter import Sandbox
-from langchain.tools import tool
+from langchain.tools import ToolRuntime, tool
 from pydantic import BaseModel, Field
+from langgraph.types import Command
+from langchain.messages import ToolMessage
 
 from stats_agent.context import Context
 
@@ -41,7 +44,7 @@ class ToolNodeSchema(BaseModel):
         description="A list of file names to be used in the code execution. Only provide the file names not the entire path!")
 
 @tool(description="Execute Python code in an isolated environment.", args_schema=ToolNodeSchema)
-async def execute_code(code: str, file_names: List[str]) -> Optional[dict[str, Any]]:
+async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -> Optional[dict[str, Any]]:
     """Execute python code in an isolated environment.
     """
 
@@ -65,8 +68,29 @@ async def execute_code(code: str, file_names: List[str]) -> Optional[dict[str, A
             print(execution.error.traceback)
             print(sandbox.sandbox_id)
 
-    return cast(dict[str, Any], execution)
+
+        images = []
+        for result in execution.results:
+            if result.png:
+                images.append(result.png)
+
+    execution_result = {
+        "stdout": execution.logs.stdout,
+        "stderr": execution.logs.stderr,
+        "chart": [result.text for result in execution.results if result.chart],
+        "error": execution.error.to_json() if execution.error else None,
+    }
+
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    content=json.dumps(execution_result),
+                    tool_call_id=runtime.tool_call_id)
+            ], 
+            "images": images })
 
 
 
 TOOLS: List[Callable[..., Any]] = [search, execute_code]
+    
