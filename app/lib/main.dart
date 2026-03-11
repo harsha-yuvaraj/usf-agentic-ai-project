@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
-import 'langgraph_provider.dart';
+import 'providers/langgraph_provider.dart';
 import 'ui/app.dart';
 
 void main() async {

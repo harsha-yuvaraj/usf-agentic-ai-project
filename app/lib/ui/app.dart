@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_ai_toolkit/flutter_ai_toolkit.dart';
 import 'package:provider/provider.dart';
 
-import '../langgraph_provider.dart';
+import '../providers/langgraph_provider.dart';
 import 'charting/images_widget.dart';
 
 class App extends StatelessWidget {
