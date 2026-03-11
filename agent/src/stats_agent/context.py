@@ -36,6 +36,13 @@ class Context:
         },
     )
 
+    max_steps: int = field(
+        default=3,
+        metadata={
+            "description": "The maximum number of steps the agent can take in a single conversation."
+        },
+    )
+
     def __post_init__(self) -> None:
         """Fetch env vars for attributes that were not passed as args."""
         for f in fields(self):
