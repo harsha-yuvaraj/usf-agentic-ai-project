@@ -1,21 +1,31 @@
 """Utility & helper functions."""
 
+from dataclasses import asdict
+
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 import httpx
+from .context import Context
 
-_LOCAL_PROVIDERS = {"unsloth"}
+_LOCAL_PROVIDERS = {"unsloth", "ollama"}
 
-def _get_local_model(model: str, provider: str) -> BaseChatModel:
+def _get_local_model(context: Context, model: str, provider: str) -> BaseChatModel:
     """Get a locally hosted model"""
     if provider == "unsloth":
         return ChatOpenAI(
                 model=f"unsloth/{model}",
-                base_url="http://127.0.0.1:8080/v1",
+                base_url=context.unsloth_base_url,
                 api_key="sk-no-key-required",
             )
+    if provider == "ollama":
+        return ChatOllama(
+            model=model,
+            reasoning=True,
+            base_url=context.ollama_base_url
+        )
     raise ValueError(f"Unknown provider: {provider}")
 
 
@@ -31,16 +41,19 @@ def get_message_text(msg: BaseMessage) -> str:
         return "".join(txts).strip()
 
 
-def load_chat_model(fully_specified_name: str) -> BaseChatModel:
+def load_chat_model(context: Context) -> BaseChatModel:
     """Load a chat model from a fully specified name.
 
     Args:
         fully_specified_name (str): String in the format 'provider/model'.
     """
+    fully_specified_name = context.model
 
     provider, model = fully_specified_name.split("/", maxsplit=1)
+
     if provider in _LOCAL_PROVIDERS:
-        return _get_local_model(model, provider)
+        return _get_local_model(context, model, provider)
+    
     return init_chat_model(model, model_provider=provider)
 
 

@@ -1,12 +1,11 @@
 """Define the configurable parameters for the agent."""
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field, fields
 from typing import Annotated
 
 from . import prompts
+
 
 
 @dataclass(kw_only=True)
@@ -36,18 +35,42 @@ class Context:
         },
     )
 
+    ollama_base_url: str = field(
+        default="http://127.0.0.1:11434",
+        metadata={
+            "description": "Base URL of the Ollama server"
+        }
+    )
+
+    unsloth_base_url: str = field(
+        default="http://127.0.0.1:8080/v1",
+        metadata={
+            "description": "Base URL of the llama.cpp server"
+        }
+    )
+
     max_steps: int = field(
-        default=3,
+        default=5,
         metadata={
             "description": "The maximum number of steps the agent can take in a single conversation."
         },
     )
 
     def __post_init__(self) -> None:
-        """Fetch env vars for attributes that were not passed as args."""
         for f in fields(self):
             if not f.init:
                 continue
 
-            if getattr(self, f.name) == f.default:
-                setattr(self, f.name, os.environ.get(f.name.upper(), f.default))
+            env_value = os.environ.get(f.name.upper())
+            if env_value is not None:
+                setattr(self, f.name, self._convert(env_value, f.type))
+
+    @staticmethod
+    def _convert(value: str, typ):
+        if typ is bool:
+            return value.lower() in {"1", "true", "yes", "on"}
+        if typ is int:
+            return int(value)
+        if typ is float:
+            return float(value)
+        return value  # string fallback
