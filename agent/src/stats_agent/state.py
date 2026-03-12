@@ -21,7 +21,7 @@ class InputState:
         default_factory=list,
         
     )
-    file_names: Sequence[str] = field(default_factory=list)
+    attachments: Sequence[str] = field(default_factory=list)
 
 
 @dataclass
@@ -32,6 +32,7 @@ class State(InputState):
     """
     steps: Annotated[int, add] = field(default=0)
     images: Annotated[Sequence[str], add] = field(default_factory=list)
+    file_names: Sequence[str] = field(default_factory=list)
 
 @dataclass
 class OutputState:
