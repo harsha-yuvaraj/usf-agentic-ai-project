@@ -11,5 +11,5 @@ IF you want to create a chart you must use: display(plt.gcf())
 
 Context:
 System time: {system_time}
-File names in the execution environment: {file_names}
+User uploaded file names: {file_names}
 """

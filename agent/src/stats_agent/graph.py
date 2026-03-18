@@ -4,7 +4,7 @@ Works with a chat model with tool calling support.
 """
 
 from datetime import UTC, datetime
-from typing import Dict, List, Literal, cast
+from typing import Any, Dict, List, Literal, cast
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph
@@ -18,6 +18,16 @@ from stats_agent.tools import TOOLS
 from stats_agent.utils import load_chat_model, download_file
 
 # Define the function that calls the model
+
+
+async def setup(
+    state: State
+) -> Dict[str, Any]:
+    """Merge user attachments."""
+
+    file_names = list(state.file_names) + list(state.attachments)
+
+    return {"file_names": file_names}
 
 
 async def call_model(
@@ -35,13 +45,14 @@ async def call_model(
         dict: A dictionary containing the model's response message.
     """
     # Initialize the model with tool binding. Change the model or add more tools here.
-    model = load_chat_model(runtime.context.model).bind_tools(TOOLS)
+    model = load_chat_model(runtime.context).bind_tools(TOOLS)
 
     # Format the system prompt. Customize this to change the agent's behavior.
     system_message = runtime.context.system_prompt.format(
         system_time=datetime.now(tz=UTC).isoformat(),
         file_names=state.file_names,
     )
+
     
     # Get the model's response
     response = cast( # type: ignore[redundant-cast]
@@ -50,6 +61,9 @@ async def call_model(
             [{"role": "system", "content": system_message}, *state.messages]
         ),
     )
+
+    print(response.to_json())
+
     # Handle the case when it's the last step and the model still wants to use a tool
     if state.steps >= runtime.context.max_steps and response.tool_calls:
         return Command(
@@ -86,17 +100,21 @@ async def call_model(
             },
             goto="__end__",
         )
+    
+
 
 
 # Define a new graph
 builder = StateGraph(State, input_schema=InputState, output_schema=OutputState, context_schema=Context)
 
 # Build nodes
+builder.add_node(setup)
 builder.add_node(call_model)
 builder.add_node("tools", ToolNode(TOOLS))
 
 # Build edges
-builder.add_edge("__start__", "call_model")
+builder.add_edge("__start__", "setup")
+builder.add_edge("setup", "call_model")
 builder.add_edge("tools", "call_model")
 
 # Compile the builder into an executable graph

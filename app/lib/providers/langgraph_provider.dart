@@ -100,7 +100,7 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
             'content': prompt,
           },
         ],
-        'file_names': await _handleAttachments(attachments),
+        'attachments': await _handleAttachments(attachments),
       },
     };
 
