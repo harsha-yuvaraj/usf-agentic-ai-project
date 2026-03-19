@@ -3,7 +3,6 @@ import 'package:flutter_ai_toolkit/flutter_ai_toolkit.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/langgraph_provider.dart';
-import 'charting/images_widget.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -18,7 +17,6 @@ class App extends StatelessWidget {
         body: Consumer<LangGraphProvider>(
           builder: (_, provider, _) => Column(
             children: [
-              ImagesWidget(images: provider.images),
               Expanded(
                 child: LlmChatView(
                   provider: provider,
