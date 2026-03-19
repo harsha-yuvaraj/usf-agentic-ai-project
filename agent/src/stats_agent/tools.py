@@ -46,8 +46,9 @@ class ToolNodeSchema(BaseModel):
 @tool(description="Execute Python code in an isolated environment.", args_schema=ToolNodeSchema)
 async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -> Optional[dict[str, Any]]:
     file_payloads = []
+    context = cast(Context, runtime.context)
     for name in file_names:
-        data = await download_file(f"attachments/{name}")
+        data = await download_file(f"attachments/{name}", context)
         file_payloads.append((name, data))
 
     execution_result, images = await asyncio.to_thread(

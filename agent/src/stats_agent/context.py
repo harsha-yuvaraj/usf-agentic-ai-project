@@ -56,6 +56,13 @@ class Context:
         },
     )
 
+    firebase_get_file_url: str = field(
+        default="http://127.0.0.1:5001/stats-agent-4a718/us-central1/getFile",
+        metadata={
+            "description": "URL to download files from Firebase Storage"
+        }
+    )
+
     def __post_init__(self) -> None:
         for f in fields(self):
             if not f.init:
