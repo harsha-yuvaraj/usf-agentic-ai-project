@@ -22,7 +22,7 @@ from langchain.messages import ToolMessage
 from stats_agent.context import Context
 import asyncio
 
-from stats_agent.utils import download_file
+from stats_agent.utils import get_file_url
 
 async def search(query: str, runtime: ToolRuntime) -> Optional[dict[str, Any]]:
     """Search for general web results.
@@ -45,16 +45,16 @@ class ToolNodeSchema(BaseModel):
     
 @tool(description="Execute Python code in an isolated environment.", args_schema=ToolNodeSchema)
 async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -> Optional[dict[str, Any]]:
-    file_payloads = []
+    file_urls = []
     context = cast(Context, runtime.context)
     for name in file_names:
-        data = await download_file(f"attachments/{name}", context)
-        file_payloads.append((name, data))
+        url = await get_file_url(f"attachments/{name}", context)
+        file_urls.append((name, url))
 
     execution_result, images = await asyncio.to_thread(
         _run_in_sandbox,
         code,
-        file_payloads,
+        file_urls,
     )
 
     return Command(
@@ -69,7 +69,7 @@ async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -
         }
     )
 
-def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]]):
+def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]]):
     images = []
     with Sandbox.create() as sandbox:
         sandbox.create_code_context(
@@ -78,9 +78,14 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]]):
             request_timeout=60_000,
         )
 
-        for name, data in file_payloads:
-            info = sandbox.files.write(name, data)
-            print(f"Wrote file {info.name} to sandbox: {info.path}")
+        for name, url in file_urls:
+            # Download file inside the sandbox directly from Firebase Storage signed URL
+            # Note: wget -qO avoids verbose output, and we quote the URL since it contains query params
+            result = sandbox.commands.run(f"wget -qO '{name}' '{url}'")
+            if result.error:
+                print(f"Failed to download {name} via Signed URL: {result.stderr}")
+            else:
+                print(f"Downloaded file {name} to sandbox via Signed URL")
 
         execution = sandbox.run_code(code)
 

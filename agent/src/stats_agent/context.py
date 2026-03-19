@@ -63,6 +63,13 @@ class Context:
         }
     )
 
+    backend_secret_key: str = field(
+        default="secret-agent-key-123",
+        metadata={
+            "description": "Secret key to authenticate with the backend services"
+        }
+    )
+
     def __post_init__(self) -> None:
         for f in fields(self):
             if not f.init:

@@ -1,12 +1,15 @@
 rules_version = '2';
 
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    // Only allow public uploads to the attachments folder, prevent reading
+    // to secure data. The Agent backend uses Admin SDK to bypass these rules.
+    match /attachments/{allPaths=**} {
+      allow write: if true;
+      allow read: if false; 
+    }
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

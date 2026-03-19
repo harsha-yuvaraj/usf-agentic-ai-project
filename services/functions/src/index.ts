@@ -4,8 +4,15 @@ import { getStorage } from "firebase-admin/storage";
 
 initializeApp();
 
-export const getFile = onRequest(async (req, res) => {
+export const getFile = onRequest({ cors: true }, async (req, res) => {
   try {
+    const apiKey = req.headers["x-api-key"];
+    // Basic authentication for a single-team deployment
+    if (apiKey !== "secret-agent-key-123") {
+      res.status(401).send("Unauthorized");
+      return;
+    }
+
     const objectPath = req.query.path || req.body.path;
 
     if (!objectPath) {
@@ -23,15 +30,16 @@ export const getFile = onRequest(async (req, res) => {
       return;
     }
 
-    const [metadata] = await file.getMetadata();
+    // Generate a secure, temporary Signed URL
+    const [url] = await file.getSignedUrl({
+      action: "read",
+      expires: Date.now() + 1000 * 60 * 60, // 1 hour
+    });
 
-    res.setHeader("Content-Type", metadata.contentType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `inline; filename="${metadata.name}"`);
-
-    file.createReadStream().pipe(res);
+    res.status(200).json({ url });
 
   } catch (error) {
     console.error(error);
-    res.status(500).send("Error retrieving file");
+    res.status(500).send("Error generating signed URL");
   }
 });
