@@ -8,11 +8,12 @@ consider implementing more robust and specialized tools tailored to your needs.
 
 
 import json
-from typing import Any, Callable, List, Optional, cast
+from typing import Any, Callable, List, Optional, cast, Annotated
 
 
 from langchain_tavily import TavilySearch
 from langgraph.runtime import get_runtime
+from langgraph.prebuilt import InjectedState
 from e2b_code_interpreter import Sandbox
 from langchain.tools import ToolRuntime, tool
 from pydantic import BaseModel, Field
@@ -44,17 +45,20 @@ class ToolNodeSchema(BaseModel):
         description="A list of file names to be used in the code execution. Only provide the file names not the entire path!")
     
 @tool(description="Execute Python code in an isolated environment.", args_schema=ToolNodeSchema)
-async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -> Optional[dict[str, Any]]:
+async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime, state: Annotated[dict, InjectedState]) -> Command:
+    sandbox_id = state.get("sandbox_id") if isinstance(state, dict) else getattr(state, "sandbox_id", None)
+    
     file_urls = []
     context = cast(Context, runtime.context)
     for name in file_names:
         url = await get_file_url(f"attachments/{name}", context)
         file_urls.append((name, url))
 
-    execution_result, images = await asyncio.to_thread(
+    execution_result, images, new_sandbox_id = await asyncio.to_thread(
         _run_in_sandbox,
         code,
         file_urls,
+        sandbox_id
     )
 
     return Command(
@@ -66,26 +70,42 @@ async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -
                 )
             ],
             "images": images,
+            "sandbox_id": new_sandbox_id,
         }
     )
 
-def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]]):
+def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]], sandbox_id: Optional[str] = None):
     images = []
-    with Sandbox.create() as sandbox:
+    sandbox = None
+    
+    if sandbox_id:
+        try:
+            sandbox = Sandbox.connect(sandbox_id)
+            sandbox.set_timeout(3600)
+            print(f"Reconnected to existing sandbox: {sandbox_id}")
+        except Exception as e:
+            print(f"Failed to reconnect to sandbox {sandbox_id}: {e}")
+            sandbox = None
+
+    if not sandbox:
+        sandbox = Sandbox.create(timeout=3600)
         sandbox.create_code_context(
             cwd="/home/user",
             language="python",
             request_timeout=60_000,
         )
+        print(f"Created new sandbox: {sandbox.sandbox_id}")
 
+    try:
         for name, url in file_urls:
-            # Download file inside the sandbox directly from Firebase Storage signed URL
-            # Note: wget -qO avoids verbose output, and we quote the URL since it contains query params
-            result = sandbox.commands.run(f"wget -qO '{name}' '{url}'")
-            if result.error:
-                print(f"Failed to download {name} via Signed URL: {result.stderr}")
-            else:
-                print(f"Downloaded file {name} to sandbox via Signed URL")
+            # Check if file exists. If not, download it.
+            check_result = sandbox.commands.run(f"[ -f '{name}' ] && echo 'exists'")
+            if "exists" not in check_result.stdout:
+                result = sandbox.commands.run(f"wget -qO '{name}' '{url}'")
+                if result.error:
+                    print(f"Failed to download {name} via Signed URL: {result.stderr}")
+                else:
+                    print(f"Downloaded file {name} to sandbox via Signed URL")
 
         execution = sandbox.run_code(code)
 
@@ -94,7 +114,6 @@ def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]]):
             print(execution.error.name)
             print(execution.error.value)
             print(execution.error.traceback)
-            print(sandbox.sandbox_id)
 
         for result in execution.results:
             if result.png:
@@ -107,7 +126,10 @@ def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]]):
             "error": execution.error.to_json() if execution.error else None,
         }
 
-    return execution_result, images
+        return execution_result, images, sandbox.sandbox_id
+    except Exception as e:
+        print(f"Execution failed: {e}")
+        return {"error": str(e)}, images, sandbox.sandbox_id if sandbox else None
 
 
 
