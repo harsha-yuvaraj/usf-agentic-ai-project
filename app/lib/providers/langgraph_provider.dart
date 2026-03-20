@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_ai_toolkit/flutter_ai_toolkit.dart';
 import 'package:http/http.dart' as http;
-
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LangGraphProvider extends LlmProvider with ChangeNotifier {
   LangGraphProvider({
@@ -30,11 +30,32 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
   final List<ChatMessage> _history;
   String? _threadId;
 
-  final List<Uint8List> _images = [];
-  List<Uint8List> get images => List.unmodifiable(_images);
+  // Track images separately since ChatMessage.attachments is final and
+  // LLM messages don't support post-creation attachments in this version.
+  final Map<ChatMessage, List<Uint8List>> _aiMessageImages = {};
 
   @override
   Iterable<ChatMessage> get history => _history;
+
+  /// Returns the generated images (charts) for a specific AI message.
+  List<Uint8List> getImagesForMessage(ChatMessage message) {
+    return _aiMessageImages[message] ?? [];
+  }
+
+  /// Finds images by matching the response text and extracting the hidden unique ID.
+  /// Used by ResponseBuilder when the message object is not available.
+  List<Uint8List> getImagesForText(String text) {
+    final markerIndex = text.lastIndexOf('\u200B');
+    if (markerIndex == -1) return [];
+    
+    final idHash = text.substring(markerIndex + 1);
+    for (final entry in _aiMessageImages.entries) {
+      if (identityHashCode(entry.key).toString() == idHash) {
+        return entry.value;
+      }
+    }
+    return [];
+  }
 
   @override
   set history(Iterable<ChatMessage> history) {
@@ -49,10 +70,10 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     String prompt, {
     Iterable<Attachment> attachments = const [],
   }) {
-    return _runPrompt(
+    return _runPromptStream(
       prompt: prompt,
       attachments: attachments,
-      persistHistory: false,
+      llmMessage: ChatMessage.llm(),
     );
   }
 
@@ -67,29 +88,43 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     _history.addAll([userMessage, llmMessage]);
     notifyListeners();
 
-    final stream = _runPrompt(
-      prompt: prompt,
-      attachments: attachments,
-      persistHistory: true,
-    );
+    try {
+      final stream = _runPromptStream(
+        prompt: prompt,
+        attachments: attachments,
+        llmMessage: llmMessage,
+      );
 
-    await for (final chunk in stream) {
-      if (chunk.isNotEmpty) {
-        llmMessage.append(chunk);
-        yield chunk;
+      await for (final chunk in stream) {
+        if (chunk.isNotEmpty) {
+          llmMessage.append(chunk);
+          yield chunk;
+        }
       }
+    } catch (e, st) {
+      Logger().e('Error in sendMessageStream', error: e, stackTrace: st);
+      final errorMsg = '\n\n**Error:** An issue occurred while communicating with the agent. Please try again.';
+      llmMessage.append(errorMsg);
+      yield errorMsg;
+    }
+
+    // Append unique hidden gallery marker if images were generated.
+    // This prevents "carrying" images to other messages with same text.
+    final images = _aiMessageImages[llmMessage];
+    if (images != null && images.isNotEmpty) {
+      llmMessage.append('\u200B${identityHashCode(llmMessage)}');
     }
 
     notifyListeners();
   }
 
-  Stream<String> _runPrompt({
+  Stream<String> _runPromptStream({
     required String prompt,
     required Iterable<Attachment> attachments,
-    required bool persistHistory,
+    required ChatMessage llmMessage,
   }) async* {
     final threadId = await _ensureThread();
-    final uri = Uri.parse('$baseUrl/threads/$threadId/runs/wait');
+    final uri = Uri.parse('$baseUrl/threads/$threadId/runs/stream');
 
     final payload = <String, dynamic>{
       'assistant_id': assistantId,
@@ -102,37 +137,150 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
         ],
         'attachments': await _handleAttachments(attachments),
       },
+      'stream_mode': ['updates', 'messages'],
     };
 
-    final response = await _client.post(
-      uri,
-      headers: _headers,
-      body: jsonEncode(payload),
-    );
+    final request = http.Request('POST', uri)
+      ..headers.addAll(_headers)
+      ..body = jsonEncode(payload);
+
+    final response = await _client.send(request);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'LangGraph request failed (${response.statusCode}): ${response.body}',
-      );
+      final body = await response.stream.bytesToString();
+      throw Exception('LangGraph stream failed (${response.statusCode}): $body');
     }
 
-    final decoded = jsonDecode(response.body);
-    final parsed = _parseResponse(decoded);
+    final stream = response.stream.transform(utf8.decoder).transform(const LineSplitter());
 
-    if (parsed.images.isNotEmpty) {
-      _images
-        ..clear()
-        ..addAll(parsed.images);
-      notifyListeners();
-    }
+    String event = '';
+    String dataBuffer = '';
+    final seenImageHashes = <int>{};
+    String accumulatedAiText = '';
+    final signaledToolCallIds = <String>{};
 
-    if (parsed.text.isEmpty && parsed.images.isEmpty) {
-      yield 'No response from LangGraph.';
-      return;
-    }
+    await for (final line in stream) {
+      if (line.startsWith(':')) {
+        // Ignore SSE comments/heartbeats (e.g., ": heartbeat")
+        continue;
+      } else if (line.startsWith('event: ')) {
+        event = line.substring(7).trim();
+      } else if (line.startsWith('data: ')) {
+        dataBuffer += line.substring(6).trim();
+      } else if (line.isEmpty) {
+        if (dataBuffer.isNotEmpty && dataBuffer != 'null') {
+          try {
+            final dataJson = jsonDecode(dataBuffer);
 
-    if (parsed.text.isNotEmpty) {
-      yield parsed.text;
+            // Handle token-by-token messages
+            if (event == 'messages/partial') {
+              if (dataJson is List && dataJson.isNotEmpty) {
+                final msgChunk = dataJson[0];
+                if (msgChunk is Map<String, dynamic> && (msgChunk['role'] == 'ai' || msgChunk['type'] == 'ai' || msgChunk['type'] == 'AIMessageChunk')) {
+                  
+                  // Check if the agent is calling a tool dynamically
+                  if (msgChunk['tool_calls'] != null && (msgChunk['tool_calls'] as List).isNotEmpty) {
+                    for (final tool in msgChunk['tool_calls']) {
+                      if (tool is Map<String, dynamic>) {
+                        final toolId = tool['id']?.toString() ?? '';
+                        final toolName = tool['name']?.toString() ?? 'tool';
+                        
+                        if (toolId.isNotEmpty && !signaledToolCallIds.contains(toolId)) {
+                           signaledToolCallIds.add(toolId);
+                           
+                           // Clear images from previous tool calls in this same turn.
+                           // This prevents "work in progress" or failed charts from accumulating
+                           // if the agent has to retry its code multiple times.
+                           _aiMessageImages[llmMessage] = [];
+                           
+                           String actionText = 'using $toolName';
+                           if (toolName == 'execute_code') {
+                              actionText = 'executing code';
+                           } else if (toolName == 'search') {
+                              actionText = 'searching the web';
+                           }
+                           
+                           yield '\n\n> ⏳ *Agent is $actionText...*\n\n';
+                        }
+                      }
+                    }
+                  }
+
+                  final content = msgChunk['content'];
+                  String newText = '';
+
+                  if (content is String && content.isNotEmpty) {
+                    newText = content;
+                  } else if (content is List) {
+                    for (final part in content) {
+                      if (part is String) {
+                        newText += part;
+                      } else if (part is Map && part['text'] is String) {
+                        newText += part['text'];
+                      }
+                    }
+                  }
+
+                  if (newText.isNotEmpty) {
+                    // Smart diffing: handle both cumulative payloads and delta payloads
+                    if (accumulatedAiText.isNotEmpty && newText.startsWith(accumulatedAiText)) {
+                      // Backend sent a cumulative string
+                      final delta = newText.substring(accumulatedAiText.length);
+                      if (delta.isNotEmpty) {
+                        yield delta;
+                        accumulatedAiText = newText;
+                      }
+                    } else if (newText != accumulatedAiText) {
+                      // Backend sent a delta chunk (or completely new text)
+                      // Edge case: if we get the exact same chunk, we ignore it.
+                      // Otherwise, we yield it and append it to our tracker.
+                    
+                      yield newText;
+                      accumulatedAiText += newText;
+                    }
+                    
+                    // Small delay to allow the Flutter UI thread to render and prevent scrolling freezes
+                    await Future.delayed(const Duration(milliseconds: 10));
+                  }
+                }
+              }
+            } 
+            // Handle updates to extract the images generated by the tool
+            else if (event == 'updates') {
+               final stateData = dataJson is Map && dataJson.containsKey('tools') ? dataJson['tools'] : dataJson;
+               if (stateData is Map<String, dynamic>) {
+                 final images = _extractImages(stateData);
+                 for (final img in images) {
+                   final hash = img.base64.hashCode;
+                   if (!seenImageHashes.contains(hash)) {
+                      seenImageHashes.add(hash);
+                      
+                      try {
+                        final bytes = base64Decode(img.base64);
+                        // Store image bytes associated with the current LLM message
+                        final currentImages = _aiMessageImages[llmMessage] ?? [];
+                        _aiMessageImages[llmMessage] = [...currentImages, bytes];
+                        notifyListeners();
+                      } catch (e) {
+                        Logger().w('Failed to decode image chart', error: e);
+                      }
+                      
+                      await Future.delayed(const Duration(milliseconds: 50));
+                   }
+                 }
+               }
+            }
+
+          } catch (e) {
+            Logger().w('Failed to parse SSE data chunk', error: e);
+          }
+        }
+        event = '';
+        dataBuffer = '';
+      } else {
+        // Multi-line data handling
+        dataBuffer += line;
+      }
     }
   }
 
@@ -158,6 +306,15 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     }
 
     _threadId = id;
+    
+    // Save to shared_preferences for thread persistence
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('langgraph_thread_id', id);
+    } catch (e) {
+      Logger().w('Failed to save thread ID to shared preferences', error: e);
+    }
+
     return id;
   }
 
@@ -199,83 +356,33 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     return summaries;
   }
 
-  _ParsedResponse _parseResponse(dynamic responseJson) {
-    if (responseJson is! Map<String, dynamic>) {
-      return const _ParsedResponse(text: '', images: []);
-    }
-
-    final text = _extractText(responseJson);
-    final images = _extractImages(responseJson);
-
-    Logger().d('LangGraph returned ${images.length} image(s).');
-
-    return _ParsedResponse(text: text, images: images);
-  }
-
-  String _extractText(Map<String, dynamic> responseJson) {
-    final messages = responseJson['messages'];
-    if (messages is! List) return '';
-
-    for (var i = messages.length - 1; i >= 0; i--) {
-      final m = messages[i];
-      if (m is! Map<String, dynamic>) continue;
-
-      final role = m['role']?.toString();
-      final type = m['type']?.toString();
-      final isAssistant = role == 'assistant' || role == 'ai' || type == 'ai';
-      if (!isAssistant) continue;
-
-      final content = m['content'];
-      if (content is String) return content.trim();
-
-      if (content is List) {
-        final buffer = StringBuffer();
-        for (final part in content) {
-          if (part is String) {
-            buffer.write(part);
-          } else if (part is Map) {
-            final text = part['text'];
-            if (text is String) buffer.write(text);
-          }
-        }
-        final out = buffer.toString().trim();
-        if (out.isNotEmpty) return out;
-      }
-    }
-
-    return '';
-  }
-
-  List<Uint8List> _extractImages(Map<String, dynamic> responseJson) {
+  List<_DataUrlParts> _extractImages(Map<String, dynamic> responseJson) {
     final rawImages = responseJson['images'];
     if (rawImages == null) return [];
 
-    final images = <Uint8List>[];
+    final images = <_DataUrlParts>[];
 
     if (rawImages is List) {
       for (final raw in rawImages) {
-        final bytes = _parseSingleImage(raw);
-        if (bytes != null) {
-          images.add(bytes);
+        final parts = _parseSingleImage(raw);
+        if (parts != null && parts.base64.isNotEmpty) {
+          images.add(parts);
         }
       }
     } else {
-      final bytes = _parseSingleImage(rawImages);
-      if (bytes != null) {
-        images.add(bytes);
+      final parts = _parseSingleImage(rawImages);
+      if (parts != null && parts.base64.isNotEmpty) {
+        images.add(parts);
       }
     }
 
     return images;
   }
 
-  Uint8List? _parseSingleImage(dynamic raw) {
+  _DataUrlParts? _parseSingleImage(dynamic raw) {
     try {
-      String? base64Data;
-
       if (raw is String) {
-        final parsed = _splitDataUrl(raw);
-        base64Data = parsed.base64;
+        return _splitDataUrl(raw);
       } else if (raw is Map<String, dynamic>) {
         final dataCandidate =
             raw['base64'] ??
@@ -283,19 +390,13 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
             raw['image'] ??
             raw['image_base64'];
 
-        if (dataCandidate is! String) return null;
-
-        final parsed = _splitDataUrl(dataCandidate);
-        base64Data = parsed.base64;
-      } else {
-        return null;
+        if (dataCandidate is String) {
+          return _splitDataUrl(dataCandidate);
+        }
       }
-
-      if (base64Data.isEmpty) return null;
-
-      return base64Decode(_normalizeBase64(base64Data));
+      return null;
     } catch (e) {
-      Logger().e('Failed to decode image', error: e);
+      Logger().e('Failed to parse image', error: e);
       return null;
     }
   }
@@ -311,11 +412,11 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     if (match != null) {
       return _DataUrlParts(
         mimeType: match.group(1),
-        base64: match.group(2) ?? '',
+        base64: _normalizeBase64(match.group(2) ?? ''),
       );
     }
 
-    return _DataUrlParts(mimeType: null, base64: trimmed);
+    return _DataUrlParts(mimeType: null, base64: _normalizeBase64(trimmed));
   }
 
   String _normalizeBase64(String input) {
@@ -330,16 +431,6 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     _client.close();
     super.dispose();
   }
-}
-
-class _ParsedResponse {
-  const _ParsedResponse({
-    required this.text,
-    required this.images,
-  });
-
-  final String text;
-  final List<Uint8List> images;
 }
 
 class _DataUrlParts {

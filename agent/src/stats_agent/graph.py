@@ -15,7 +15,7 @@ from langgraph.types import Command
 from stats_agent.context import Context
 from stats_agent.state import InputState, OutputState, State
 from stats_agent.tools import TOOLS
-from stats_agent.utils import load_chat_model, download_file
+from stats_agent.utils import load_chat_model
 
 # Define the function that calls the model
 

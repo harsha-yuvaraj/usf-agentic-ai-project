@@ -8,11 +8,12 @@ consider implementing more robust and specialized tools tailored to your needs.
 
 
 import json
-from typing import Any, Callable, List, Optional, cast
+from typing import Any, Callable, List, Optional, cast, Annotated
 
 
 from langchain_tavily import TavilySearch
 from langgraph.runtime import get_runtime
+from langgraph.prebuilt import InjectedState
 from e2b_code_interpreter import Sandbox
 from langchain.tools import ToolRuntime, tool
 from pydantic import BaseModel, Field
@@ -40,20 +41,41 @@ class ToolNodeSchema(BaseModel):
 
     code: str = Field(...,
         description="The Python code to execute in the isolated environment.")
-    file_names: List[str] = Field(...,
-        description="A list of file names to be used in the code execution. Only provide the file names not the entire path!")
     
-@tool(description="Execute Python code in an isolated environment.", args_schema=ToolNodeSchema)
-async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -> Optional[dict[str, Any]]:
+@tool(description="Execute Python code in an isolated environment. The environment automatically has access to the user's uploaded files in the current working directory (/home/user/).", args_schema=ToolNodeSchema)
+async def execute_code(code: str, runtime: ToolRuntime, state: Annotated[dict, InjectedState]) -> Command:
+    sandbox_id = state.get("sandbox_id") if isinstance(state, dict) else getattr(state, "sandbox_id", None)
+    
+    # Automatically get the files from the state instead of relying on the LLM
+    state_file_names = state.get("file_names", []) if isinstance(state, dict) else getattr(state, "file_names", [])
+    
     file_payloads = []
-    for name in file_names:
-        data = await download_file(f"attachments/{name}")
-        file_payloads.append((name, data))
+    context = cast(Context, runtime.context)
+    for name in state_file_names:
+        try:
+            # Download file bytes from Firebase (handles local emulator -> cloud E2B bridging)
+            data = await download_file(f"attachments/{name}", context)
+            file_payloads.append((name, data))
+        except Exception as e:
+            # HARD FAIL: If the file fails to download, stop the tool immediately.
+            error_msg = f"System Error: Failed to download the uploaded file '{name}' from the backend storage. Please tell the user the file is inaccessible: {e}"
+            print(error_msg)
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            content=json.dumps({"error": error_msg}),
+                            tool_call_id=runtime.tool_call_id,
+                        )
+                    ]
+                }
+            )
 
-    execution_result, images = await asyncio.to_thread(
+    execution_result, images, new_sandbox_id = await asyncio.to_thread(
         _run_in_sandbox,
         code,
         file_payloads,
+        sandbox_id
     )
 
     return Command(
@@ -65,30 +87,52 @@ async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime) -
                 )
             ],
             "images": images,
+            "sandbox_id": new_sandbox_id,
         }
     )
 
-def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]]):
+def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_id: Optional[str] = None):
     images = []
-    with Sandbox.create() as sandbox:
+    sandbox = None
+    
+    if sandbox_id:
+        try:
+            sandbox = Sandbox.connect(sandbox_id)
+            sandbox.set_timeout(3600)
+            print(f"Reconnected to existing sandbox: {sandbox_id}")
+        except Exception as e:
+            print(f"Failed to reconnect to sandbox {sandbox_id}: {e}")
+            sandbox = None
+
+    if not sandbox:
+        sandbox = Sandbox.create(timeout=3600)
         sandbox.create_code_context(
             cwd="/home/user",
             language="python",
             request_timeout=60_000,
         )
+        print(f"Created new sandbox: {sandbox.sandbox_id}")
 
+    try:
         for name, data in file_payloads:
-            info = sandbox.files.write(name, data)
-            print(f"Wrote file {info.name} to sandbox: {info.path}")
+            # Push file directly from LangGraph server to E2B Cloud Sandbox
+            # We use absolute paths to ensure the agent finds them correctly.
+            absolute_path = f"/home/user/{name}"
+            check_result = sandbox.commands.run(f"[ -f '{absolute_path}' ] && echo 'exists' || echo 'missing'")
+            if "exists" not in check_result.stdout:
+                info = sandbox.files.write(absolute_path, data)
+                print(f"Wrote file {info.name} to sandbox: {info.path}")
 
-        execution = sandbox.run_code(code)
+        # Inject a safety wrapper to prevent matplotlib from leaking zombie plots between executions
+        safe_code = "import matplotlib.pyplot as plt\nplt.close('all')\n" + code
+        
+        execution = sandbox.run_code(safe_code)
 
         if execution.error:
             print("AI-generated code had an error.")
             print(execution.error.name)
             print(execution.error.value)
             print(execution.error.traceback)
-            print(sandbox.sandbox_id)
 
         for result in execution.results:
             if result.png:
@@ -101,7 +145,10 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]]):
             "error": execution.error.to_json() if execution.error else None,
         }
 
-    return execution_result, images
+        return execution_result, images, sandbox.sandbox_id
+    except Exception as e:
+        print(f"Execution failed: {e}")
+        return {"error": str(e)}, images, sandbox.sandbox_id if sandbox else None
 
 
 

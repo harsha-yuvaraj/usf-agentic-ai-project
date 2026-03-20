@@ -1,7 +1,7 @@
 """Define the state structures for the agent."""
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Sequence, Optional
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph import add_messages
@@ -33,6 +33,7 @@ class State(InputState):
     steps: Annotated[int, add] = field(default=0)
     images: Annotated[Sequence[str], add] = field(default_factory=list)
     file_names: Sequence[str] = field(default_factory=list)
+    sandbox_id: Optional[str] = field(default=None)
 
 @dataclass
 class OutputState:

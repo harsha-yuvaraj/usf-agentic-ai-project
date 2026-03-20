@@ -58,18 +58,18 @@ def load_chat_model(context: Context) -> BaseChatModel:
 
 
 
-async def download_file(object_path: str) -> bytes:
+async def download_file(object_path: str, context: Context) -> bytes:
     """
-    Download a file from Firebase Storage.
+    Download a file from Firebase Storage via the Cloud Function.
     Input: object_path (example: attachments/file.pdf)
     Returns: file bytes
     """
     
-    FUNCTION_URL = "http://127.0.0.1:5001/stats-agent-4a718/us-central1/getFile"
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            FUNCTION_URL,
+            context.firebase_get_file_url,
             params={"path": object_path},
+            headers={"x-api-key": context.backend_secret_key},
             timeout=60,
         )
 
