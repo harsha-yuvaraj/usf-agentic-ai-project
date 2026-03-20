@@ -122,7 +122,10 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_i
                 info = sandbox.files.write(name, data)
                 print(f"Wrote file {info.name} to sandbox: {info.path}")
 
-        execution = sandbox.run_code(code)
+        # Inject a safety wrapper to prevent matplotlib from leaking zombie plots between executions
+        safe_code = "import matplotlib.pyplot as plt\nplt.close('all')\n" + code
+        
+        execution = sandbox.run_code(safe_code)
 
         if execution.error:
             print("AI-generated code had an error.")
