@@ -31,6 +31,7 @@ void main() async {
       assistantId: 'agent',
       storage: FirebaseStorage.instance,
       threadId: threadId,
+      apiKey: dotenv.env['BACKEND_SECRET_KEY'],
       ),
     child: const App(),
     )

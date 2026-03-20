@@ -64,9 +64,9 @@ class Context:
     )
 
     backend_secret_key: str = field(
-        default="secret-agent-key-123",
+        default="REPLACE_ME",
         metadata={
-            "description": "Secret key to authenticate with the backend services"
+            "description": "Secret key to authenticate with the backend services. Set via BACKEND_SECRET_KEY env var."
         }
     )
 

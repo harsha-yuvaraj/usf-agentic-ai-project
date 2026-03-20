@@ -15,7 +15,7 @@ export const getFile = onRequest({ cors: true }, async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"];
     // Basic authentication for a single-team deployment
-    if (apiKey !== "secret-agent-key-123") {
+    if (apiKey !== process.env.BACKEND_SECRET_KEY) {
       res.status(401).send("Unauthorized");
       return;
     }

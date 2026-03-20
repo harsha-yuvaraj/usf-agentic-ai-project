@@ -14,7 +14,12 @@ Once you are ready to provide an answer, if you have performed any calculations 
 
 IF you want to create a chart you must use: display(plt.gcf())
 
+Environment:
+- Persistent Python sandbox with common data science libraries (pandas, matplotlib, etc.).
+- The current working directory is `/home/user/`.
+- User uploaded files are located in `/home/user/`.
+- List of available files: {file_names}
+
 Context:
 System time: {system_time}
-User uploaded file names: {file_names}
 """

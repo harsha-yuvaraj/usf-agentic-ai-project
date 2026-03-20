@@ -42,7 +42,7 @@ class ToolNodeSchema(BaseModel):
     code: str = Field(...,
         description="The Python code to execute in the isolated environment.")
     
-@tool(description="Execute Python code in an isolated environment. The environment automatically has access to the user's uploaded files.", args_schema=ToolNodeSchema)
+@tool(description="Execute Python code in an isolated environment. The environment automatically has access to the user's uploaded files in the current working directory (/home/user/).", args_schema=ToolNodeSchema)
 async def execute_code(code: str, runtime: ToolRuntime, state: Annotated[dict, InjectedState]) -> Command:
     sandbox_id = state.get("sandbox_id") if isinstance(state, dict) else getattr(state, "sandbox_id", None)
     
@@ -116,10 +116,11 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_i
     try:
         for name, data in file_payloads:
             # Push file directly from LangGraph server to E2B Cloud Sandbox
-            # We use '|| echo missing' so the command always returns exit code 0 to prevent E2B exceptions.
-            check_result = sandbox.commands.run(f"[ -f '{name}' ] && echo 'exists' || echo 'missing'")
+            # We use absolute paths to ensure the agent finds them correctly.
+            absolute_path = f"/home/user/{name}"
+            check_result = sandbox.commands.run(f"[ -f '{absolute_path}' ] && echo 'exists' || echo 'missing'")
             if "exists" not in check_result.stdout:
-                info = sandbox.files.write(name, data)
+                info = sandbox.files.write(absolute_path, data)
                 print(f"Wrote file {info.name} to sandbox: {info.path}")
 
         # Inject a safety wrapper to prevent matplotlib from leaking zombie plots between executions
