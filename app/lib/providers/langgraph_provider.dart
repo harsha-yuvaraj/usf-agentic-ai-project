@@ -130,14 +130,19 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     String event = '';
     String dataBuffer = '';
     final seenImageHashes = <int>{};
+    String accumulatedAiText = '';
+    final signaledToolCallIds = <String>{};
 
     await for (final line in stream) {
-      if (line.startsWith('event: ')) {
+      if (line.startsWith(':')) {
+        // Ignore SSE comments/heartbeats (e.g., ": heartbeat")
+        continue;
+      } else if (line.startsWith('event: ')) {
         event = line.substring(7).trim();
       } else if (line.startsWith('data: ')) {
         dataBuffer += line.substring(6).trim();
       } else if (line.isEmpty) {
-        if (dataBuffer.isNotEmpty) {
+        if (dataBuffer.isNotEmpty && dataBuffer != 'null') {
           try {
             final dataJson = jsonDecode(dataBuffer);
 
@@ -146,17 +151,65 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
               if (dataJson is List && dataJson.isNotEmpty) {
                 final msgChunk = dataJson[0];
                 if (msgChunk is Map<String, dynamic> && (msgChunk['role'] == 'ai' || msgChunk['type'] == 'ai' || msgChunk['type'] == 'AIMessageChunk')) {
+                  
+                  // Check if the agent is calling a tool dynamically
+                  if (msgChunk['tool_calls'] != null && (msgChunk['tool_calls'] as List).isNotEmpty) {
+                    for (final tool in msgChunk['tool_calls']) {
+                      if (tool is Map<String, dynamic>) {
+                        final toolId = tool['id']?.toString() ?? '';
+                        final toolName = tool['name']?.toString() ?? 'tool';
+                        
+                        if (toolId.isNotEmpty && !signaledToolCallIds.contains(toolId)) {
+                           signaledToolCallIds.add(toolId);
+                           
+                           String actionText = 'using $toolName';
+                           if (toolName == 'execute_code') {
+                              actionText = 'executing code';
+                           } else if (toolName == 'search') {
+                              actionText = 'searching the web';
+                           }
+                           
+                           yield '\n\n> ⏳ *Agent is $actionText...*\n\n';
+                        }
+                      }
+                    }
+                  }
+
                   final content = msgChunk['content'];
+                  String newText = '';
+
                   if (content is String && content.isNotEmpty) {
-                    yield content;
+                    newText = content;
                   } else if (content is List) {
                     for (final part in content) {
                       if (part is String) {
-                        yield part;
+                        newText += part;
                       } else if (part is Map && part['text'] is String) {
-                        yield part['text'];
+                        newText += part['text'];
                       }
                     }
+                  }
+
+                  if (newText.isNotEmpty) {
+                    // Smart diffing: handle both cumulative payloads and delta payloads
+                    if (accumulatedAiText.isNotEmpty && newText.startsWith(accumulatedAiText)) {
+                      // Backend sent a cumulative string
+                      final delta = newText.substring(accumulatedAiText.length);
+                      if (delta.isNotEmpty) {
+                        yield delta;
+                        accumulatedAiText = newText;
+                      }
+                    } else if (newText != accumulatedAiText) {
+                      // Backend sent a delta chunk (or completely new text)
+                      // Edge case: if we get the exact same chunk, we ignore it.
+                      // Otherwise, we yield it and append it to our tracker.
+                    
+                      yield newText;
+                      accumulatedAiText += newText;
+                    }
+                    
+                    // Small delay to allow the Flutter UI thread to render and prevent scrolling freezes
+                    await Future.delayed(const Duration(milliseconds: 10));
                   }
                 }
               }
@@ -173,6 +226,7 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                       // Append image using markdown base64 inline so it renders in the chat bubble correctly
                       final markdownImage = '\n\n![Generated Chart](data:${img.mimeType ?? 'image/png'};base64,${img.base64})\n\n';
                       yield markdownImage;
+                      await Future.delayed(const Duration(milliseconds: 50)); // Larger delay for images
                    }
                  }
                }

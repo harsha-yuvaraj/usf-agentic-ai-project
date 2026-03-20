@@ -23,7 +23,7 @@ from langchain.messages import ToolMessage
 from stats_agent.context import Context
 import asyncio
 
-from stats_agent.utils import get_file_url
+from stats_agent.utils import download_file
 
 async def search(query: str, runtime: ToolRuntime) -> Optional[dict[str, Any]]:
     """Search for general web results.
@@ -41,23 +41,40 @@ class ToolNodeSchema(BaseModel):
 
     code: str = Field(...,
         description="The Python code to execute in the isolated environment.")
-    file_names: List[str] = Field(...,
-        description="A list of file names to be used in the code execution. Only provide the file names not the entire path!")
     
-@tool(description="Execute Python code in an isolated environment.", args_schema=ToolNodeSchema)
-async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime, state: Annotated[dict, InjectedState]) -> Command:
+@tool(description="Execute Python code in an isolated environment. The environment automatically has access to the user's uploaded files.", args_schema=ToolNodeSchema)
+async def execute_code(code: str, runtime: ToolRuntime, state: Annotated[dict, InjectedState]) -> Command:
     sandbox_id = state.get("sandbox_id") if isinstance(state, dict) else getattr(state, "sandbox_id", None)
     
-    file_urls = []
+    # Automatically get the files from the state instead of relying on the LLM
+    state_file_names = state.get("file_names", []) if isinstance(state, dict) else getattr(state, "file_names", [])
+    
+    file_payloads = []
     context = cast(Context, runtime.context)
-    for name in file_names:
-        url = await get_file_url(f"attachments/{name}", context)
-        file_urls.append((name, url))
+    for name in state_file_names:
+        try:
+            # Download file bytes from Firebase (handles local emulator -> cloud E2B bridging)
+            data = await download_file(f"attachments/{name}", context)
+            file_payloads.append((name, data))
+        except Exception as e:
+            # HARD FAIL: If the file fails to download, stop the tool immediately.
+            error_msg = f"System Error: Failed to download the uploaded file '{name}' from the backend storage. Please tell the user the file is inaccessible: {e}"
+            print(error_msg)
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            content=json.dumps({"error": error_msg}),
+                            tool_call_id=runtime.tool_call_id,
+                        )
+                    ]
+                }
+            )
 
     execution_result, images, new_sandbox_id = await asyncio.to_thread(
         _run_in_sandbox,
         code,
-        file_urls,
+        file_payloads,
         sandbox_id
     )
 
@@ -74,7 +91,7 @@ async def execute_code(code: str, file_names: List[str], runtime: ToolRuntime, s
         }
     )
 
-def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]], sandbox_id: Optional[str] = None):
+def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_id: Optional[str] = None):
     images = []
     sandbox = None
     
@@ -97,15 +114,13 @@ def _run_in_sandbox(code: str, file_urls: list[tuple[str, str]], sandbox_id: Opt
         print(f"Created new sandbox: {sandbox.sandbox_id}")
 
     try:
-        for name, url in file_urls:
-            # Check if file exists. If not, download it.
-            check_result = sandbox.commands.run(f"[ -f '{name}' ] && echo 'exists'")
+        for name, data in file_payloads:
+            # Push file directly from LangGraph server to E2B Cloud Sandbox
+            # We use '|| echo missing' so the command always returns exit code 0 to prevent E2B exceptions.
+            check_result = sandbox.commands.run(f"[ -f '{name}' ] && echo 'exists' || echo 'missing'")
             if "exists" not in check_result.stdout:
-                result = sandbox.commands.run(f"wget -qO '{name}' '{url}'")
-                if result.error:
-                    print(f"Failed to download {name} via Signed URL: {result.stderr}")
-                else:
-                    print(f"Downloaded file {name} to sandbox via Signed URL")
+                info = sandbox.files.write(name, data)
+                print(f"Wrote file {info.name} to sandbox: {info.path}")
 
         execution = sandbox.run_code(code)
 

@@ -5,8 +5,7 @@ service firebase.storage {
     // Only allow public uploads to the attachments folder, prevent reading
     // to secure data. The Agent backend uses Admin SDK to bypass these rules.
     match /attachments/{allPaths=**} {
-      allow write: if true;
-      allow read: if false; 
+      allow read, write: if true;
     }
     match /{allPaths=**} {
       allow read, write: if false;

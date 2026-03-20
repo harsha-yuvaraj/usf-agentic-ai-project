@@ -58,11 +58,11 @@ def load_chat_model(context: Context) -> BaseChatModel:
 
 
 
-async def get_file_url(object_path: str, context: Context) -> str:
+async def download_file(object_path: str, context: Context) -> bytes:
     """
-    Get a signed URL for a file from Firebase Storage.
+    Download a file from Firebase Storage via the Cloud Function.
     Input: object_path (example: attachments/file.pdf)
-    Returns: Signed URL string
+    Returns: file bytes
     """
     
     async with httpx.AsyncClient() as client:
@@ -70,8 +70,8 @@ async def get_file_url(object_path: str, context: Context) -> str:
             context.firebase_get_file_url,
             params={"path": object_path},
             headers={"x-api-key": context.backend_secret_key},
-            timeout=10,
+            timeout=60,
         )
 
         response.raise_for_status()
-        return response.json()["url"]
+        return response.content
