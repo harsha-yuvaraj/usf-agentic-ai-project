@@ -13,11 +13,12 @@ import logging
 from typing import Annotated, Any, Callable, List, Optional, cast
 
 from e2b_code_interpreter import Sandbox
+from langchain.agents import create_agent
 from langchain.messages import ToolMessage
 from langchain.tools import ToolRuntime, tool
 from langchain_tavily import TavilySearch
 from langgraph.errors import GraphRecursionError
-from langgraph.prebuilt import InjectedState, create_react_agent
+from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
@@ -145,7 +146,7 @@ async def delegate_to_analyst(
 
     model = load_chat_model(context, context.analyst_model)
     prompt = context.analyst_prompt.format(file_names=state_file_names)
-    agent = create_react_agent(model, tools=[local_execute_code], state_modifier=prompt)
+    agent = create_agent(model=model, tools=[local_execute_code], system_prompt=prompt)
     
     try:
         res = await agent.ainvoke(
@@ -198,7 +199,7 @@ async def delegate_to_researcher(
         return cast(dict[str, Any], await wrapped.ainvoke({"query": q}))
         
     model = load_chat_model(context, context.researcher_model)
-    agent = create_react_agent(model, tools=[local_search], state_modifier=context.researcher_prompt)
+    agent = create_agent(model=model, tools=[local_search], system_prompt=context.researcher_prompt)
     
     try:
         res = await agent.ainvoke(

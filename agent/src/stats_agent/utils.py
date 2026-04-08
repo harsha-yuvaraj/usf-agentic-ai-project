@@ -1,6 +1,8 @@
 """Utility & helper functions."""
 
 
+from typing import Optional
+
 import httpx
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
@@ -40,8 +42,7 @@ def get_message_text(msg: BaseMessage) -> str:
         txts = [c if isinstance(c, str) else (c.get("text") or "") for c in content]
         return "".join(txts).strip()
 
-
-def load_chat_model(context: Context, model_name: str = None) -> BaseChatModel:
+def load_chat_model(context: Context, model_name: Optional[str] = None) -> BaseChatModel:
     """Load a chat model from a fully specified name.
 
     Args:
@@ -54,14 +55,14 @@ def load_chat_model(context: Context, model_name: str = None) -> BaseChatModel:
 
     if provider in _LOCAL_PROVIDERS:
         return _get_local_model(context, model, provider)
-    
+
     return init_chat_model(model, model_provider=provider)
 
 
 
 async def download_file(object_path: str, context: Context) -> bytes:
     """Download a file from Firebase Storage via the Cloud Function.
-    
+
     Input: object_path (example: attachments/file.pdf)
     Returns: file bytes.
     """
