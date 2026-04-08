@@ -1,19 +1,19 @@
 """Utility & helper functions."""
 
-from dataclasses import asdict
 
+import httpx
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
-from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
-import httpx
+from langchain_openai import ChatOpenAI
+
 from .context import Context
 
 _LOCAL_PROVIDERS = {"unsloth", "ollama"}
 
 def _get_local_model(context: Context, model: str, provider: str) -> BaseChatModel:
-    """Get a locally hosted model"""
+    """Get a locally hosted model."""
     if provider == "unsloth":
         return ChatOpenAI(
                 model=f"unsloth/{model}",
@@ -60,12 +60,11 @@ def load_chat_model(context: Context, model_name: str = None) -> BaseChatModel:
 
 
 async def download_file(object_path: str, context: Context) -> bytes:
-    """
-    Download a file from Firebase Storage via the Cloud Function.
-    Input: object_path (example: attachments/file.pdf)
-    Returns: file bytes
-    """
+    """Download a file from Firebase Storage via the Cloud Function.
     
+    Input: object_path (example: attachments/file.pdf)
+    Returns: file bytes.
+    """
     async with httpx.AsyncClient() as client:
         response = await client.get(
             context.firebase_get_file_url,
