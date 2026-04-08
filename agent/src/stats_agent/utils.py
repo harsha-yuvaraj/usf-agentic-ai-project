@@ -25,7 +25,7 @@ def _get_local_model(context: Context, model: str, provider: str) -> BaseChatMod
     if provider == "ollama":
         return ChatOllama(
             model=model,
-            reasoning=True,
+            reasoning=context.reasoning,
             base_url=context.ollama_base_url
         )
     raise ValueError(f"Unknown provider: {provider}")

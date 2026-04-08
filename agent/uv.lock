@@ -2788,7 +2788,7 @@ dev = [
 requires-dist = [
     { name = "e2b", specifier = ">=2.13.3" },
     { name = "e2b-code-interpreter", specifier = ">=2.4.1" },
-    { name = "langchain", specifier = ">=0.2.14" },
+    { name = "langchain", specifier = ">=1.0.0,<2.0.0" },
     { name = "langchain-anthropic", specifier = ">=0.1.23" },
     { name = "langchain-fireworks", specifier = ">=0.1.7" },
     { name = "langchain-ollama", specifier = ">=1.0.1" },

@@ -23,10 +23,6 @@ async def delete_thread(thread_id: str):
     print(f"Deleted thread with id {thread_id} and all its runs.")
 
 def main():
-    asyncio.run(delete_thread())
-
-
-def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("thread_id")
     args = parser.parse_args()

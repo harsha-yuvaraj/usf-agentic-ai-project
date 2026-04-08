@@ -169,6 +169,7 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     final seenImageHashes = <int>{};
     String accumulatedAiText = '';
     final signaledToolCallIds = <String>{};
+    String currentMessageId = '';
 
     await for (final line in stream) {
       if (line.startsWith(':')) {
@@ -189,6 +190,12 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                 final msgChunk = dataJson[0];
                 if (msgChunk is Map<String, dynamic> && (msgChunk['role'] == 'ai' || msgChunk['type'] == 'ai' || msgChunk['type'] == 'AIMessageChunk')) {
                   
+                  final msgId = msgChunk['id']?.toString() ?? '';
+                  if (msgId.isNotEmpty && msgId != currentMessageId) {
+                    currentMessageId = msgId;
+                    accumulatedAiText = '';
+                  }
+
                   // Check if the agent is calling a tool dynamically
                   if (msgChunk['tool_calls'] != null && (msgChunk['tool_calls'] as List).isNotEmpty) {
                     for (final tool in msgChunk['tool_calls']) {
@@ -204,9 +211,9 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                            // if the agent has to retry its code multiple times.
                            _aiMessageImages[llmMessage] = [];
                            
-                           if (toolName == 'execute_code' || toolName == 'delegate_to_analyst') {
+                           if (toolName == 'delegate_to_analyst') {
                               _setAgentState('Analyzing & Running Code...');
-                           } else if (toolName == 'search' || toolName == 'delegate_to_researcher') {
+                           } else if (toolName == 'delegate_to_researcher') {
                               _setAgentState('Researching...');
                            } else {
                               _setAgentState('Thinking...');

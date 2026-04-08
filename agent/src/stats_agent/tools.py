@@ -1,12 +1,3 @@
-"""This module provides example tools for web scraping and search functionality.
-
-It includes a basic Tavily search function (as an example)
-
-These tools are intended as free examples to get started. For production use,
-consider implementing more robust and specialized tools tailored to your needs.
-"""
-
-
 import asyncio
 import json
 import logging
@@ -14,8 +5,9 @@ from typing import Annotated, Any, Callable, List, Optional, cast
 
 from e2b_code_interpreter import Sandbox
 from langchain.agents import create_agent
-from langchain.messages import ToolMessage
-from langchain.tools import ToolRuntime, tool
+from langchain_core.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import InjectedToolCallId, tool
 from langchain_tavily import TavilySearch
 from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import InjectedState
@@ -23,6 +15,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from stats_agent.context import Context
+from stats_agent.state import State
 from stats_agent.utils import download_file, load_chat_model
 
 logger = logging.getLogger(__name__)
@@ -52,12 +45,13 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_i
 
     if not sandbox:
         sandbox = Sandbox.create(timeout=3600)
-        sandbox.create_code_context(
-            cwd="/home/user",
-            language="python",
-            request_timeout=60_000,
-        )
         logger.info(f"Created new sandbox: {sandbox.sandbox_id}")
+
+    sandbox.create_code_context(
+        cwd="/home/user",
+        language="python",
+        request_timeout=60_000,
+    )
 
     try:
         for name, data in file_payloads:
@@ -100,16 +94,20 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_i
 @tool
 async def delegate_to_analyst(
     task: str,
-    runtime: ToolRuntime,
-    state: Annotated[dict, InjectedState]
+    config: RunnableConfig,
+    state: Annotated[State, InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Delegate a data analysis, coding, or statistical task to the Analyst.
     
     Use this when you need to load data, perform calculations, run statistical tests, or create charts.
     """
-    sandbox_id = state.get("sandbox_id") if isinstance(state, dict) else getattr(state, "sandbox_id", None)
-    state_file_names = state.get("file_names", []) if isinstance(state, dict) else getattr(state, "file_names", [])
-    context = cast(Context, runtime.context)
+    sandbox_id = state.sandbox_id
+    state_file_names = state.file_names
+    context = cast(Context, config.get("configurable", {}).get("context"))
+    if not context:
+         from stats_agent.context import Context as ContextCls
+         context = ContextCls()
     
     accumulated_images = []
     current_sandbox_id = [sandbox_id]
@@ -151,7 +149,7 @@ async def delegate_to_analyst(
     try:
         res = await agent.ainvoke(
             {"messages": [("user", task)]},
-            {"recursion_limit": context.max_worker_steps}
+            {"recursion_limit": 2 * context.max_worker_steps + 1}
         )
         final_content = res["messages"][-1].content
         if isinstance(final_content, list):
@@ -160,6 +158,7 @@ async def delegate_to_analyst(
     except GraphRecursionError:
         final_content = "Reached execution limit. The agent took too many steps and was terminated."
     except Exception as e:
+        logger.exception("Analyst execution failed")
         final_content = f"An error occurred during Analyst execution: {str(e)}"
     
     return Command(
@@ -167,7 +166,7 @@ async def delegate_to_analyst(
             "messages": [
                 ToolMessage(
                     content=str(final_content),
-                    tool_call_id=runtime.tool_call_id,
+                    tool_call_id=tool_call_id,
                 )
             ],
             "images": accumulated_images,
@@ -179,14 +178,18 @@ async def delegate_to_analyst(
 @tool
 async def delegate_to_researcher(
     query: str,
-    runtime: ToolRuntime
+    config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Delegate a web search or domain research task to the Researcher.
     
     Use this when you need to find domain-specific knowledge, guidelines, or statistical methodologies from the web.
     """
-    context = cast(Context, runtime.context)
-    
+    context = cast(Context, config.get("configurable", {}).get("context"))
+    if not context:
+         from stats_agent.context import Context as ContextCls
+         context = ContextCls()
+
     @tool
     async def local_search(q: str) -> dict:
         """Search for general web results.
@@ -204,7 +207,7 @@ async def delegate_to_researcher(
     try:
         res = await agent.ainvoke(
             {"messages": [("user", query)]},
-            {"recursion_limit": context.max_worker_steps}
+            {"recursion_limit": 2 * context.max_worker_steps + 1}
         )
         final_content = res["messages"][-1].content
         if isinstance(final_content, list):
@@ -212,6 +215,7 @@ async def delegate_to_researcher(
     except GraphRecursionError:
         final_content = "Reached execution limit. The agent took too many steps and was terminated."
     except Exception as e:
+        logger.exception("Researcher execution failed")
         final_content = f"An error occurred during Researcher execution: {str(e)}"
     
     return Command(
@@ -219,7 +223,7 @@ async def delegate_to_researcher(
             "messages": [
                 ToolMessage(
                     content=str(final_content),
-                    tool_call_id=runtime.tool_call_id,
+                    tool_call_id=tool_call_id,
                 )
             ]
         }

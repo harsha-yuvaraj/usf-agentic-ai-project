@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass, field, fields
-from typing import Annotated
+from typing import Annotated, get_args, get_origin
 
 from . import prompts
 
@@ -103,6 +103,13 @@ class Context:
         }
     )
 
+    reasoning: bool = field(
+        default=True,
+        metadata={
+            "description": "Enable reasoning/thinking mode for local models (Ollama). Set via REASONING env var."
+        }
+    )
+
     def __post_init__(self) -> None:
         for f in fields(self):
             if not f.init:
@@ -114,6 +121,10 @@ class Context:
 
     @staticmethod
     def _convert(value: str, typ):
+        # Unwrap Annotated[X, ...] to get the base type X
+        if get_origin(typ) is Annotated:
+            typ = get_args(typ)[0]
+
         if typ is bool:
             return value.lower() in {"1", "true", "yes", "on"}
         if typ is int:
