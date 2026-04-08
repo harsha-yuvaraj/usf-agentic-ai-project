@@ -204,9 +204,9 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                            // if the agent has to retry its code multiple times.
                            _aiMessageImages[llmMessage] = [];
                            
-                           if (toolName == 'execute_code') {
-                              _setAgentState('Running code...');
-                           } else if (toolName == 'search') {
+                           if (toolName == 'execute_code' || toolName == 'delegate_to_analyst') {
+                              _setAgentState('Analyzing & Running Code...');
+                           } else if (toolName == 'search' || toolName == 'delegate_to_researcher') {
                               _setAgentState('Researching...');
                            } else {
                               _setAgentState('Thinking...');
