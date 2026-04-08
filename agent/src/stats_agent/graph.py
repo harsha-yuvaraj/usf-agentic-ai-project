@@ -3,8 +3,9 @@
 Works with a chat model with tool calling support.
 """
 
+import logging
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Literal, cast
+from typing import Any, Dict, Literal, cast
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph
@@ -14,8 +15,10 @@ from langgraph.types import Command
 
 from stats_agent.context import Context
 from stats_agent.state import InputState, OutputState, State
-from stats_agent.tools import TOOLS
+from stats_agent.tools import ORCHESTRATOR_TOOLS
 from stats_agent.utils import load_chat_model
+
+logger = logging.getLogger(__name__)
 
 # Define the function that calls the model
 
@@ -24,30 +27,29 @@ async def setup(
     state: State
 ) -> Dict[str, Any]:
     """Merge user attachments."""
-
     file_names = list(state.file_names) + list(state.attachments)
 
     return {"file_names": file_names}
 
 
-async def call_model(
+async def call_orchestrator(
     state: State, runtime: Runtime[Context]
 ) -> Command[Literal["__end__", "tools"]]:
-    """Call the LLM powering our "agent".
+    """Call the Orchestrator LLM.
 
     This function prepares the prompt, initializes the model, and processes the response.
 
     Args:
         state (State): The current state of the conversation.
-        config (RunnableConfig): Configuration for the model run.
+        runtime (Runtime[Context]): Configuration and context for the model run.
 
     Returns:
         dict: A dictionary containing the model's response message.
     """
     # Initialize the model with tool binding. Change the model or add more tools here.
-    model = load_chat_model(runtime.context).bind_tools(TOOLS)
+    model = load_chat_model(runtime.context).bind_tools(ORCHESTRATOR_TOOLS)
 
-    # Format the system prompt. Customize this to change the agent's behavior.
+    # Format the orchestrator prompt.
     system_message = runtime.context.orchestrator_prompt.format(
         system_time=datetime.now(tz=UTC).isoformat(),
         file_names=state.file_names,
@@ -62,17 +64,17 @@ async def call_model(
         ),
     )
 
-    print(response.to_json())
+    logger.info(response.to_json())
 
     # Handle the case when it's the last step and the model still wants to use a tool
-    if state.steps >= runtime.context.max_orchestrator_steps and response.tool_calls:
+    if state.orchestrator_steps >= runtime.context.max_orchestrator_steps and response.tool_calls:
         return Command(
             update = {
-                "steps": -state.steps,
+                "orchestrator_steps": -state.orchestrator_steps,
                 "messages": [
                     AIMessage(
                         id=response.id,
-                        content="Sorry, I could not find an answer to your question in the specified number of steps.",
+                        content="I have reached the maximum number of reasoning steps. Based on the analysis completed so far, here is a summary of what I found.",
                     )
                 ]
             },
@@ -82,7 +84,7 @@ async def call_model(
     elif response.tool_calls:
         return Command(
             update = {
-                "steps": 1,
+                "orchestrator_steps": 1,
                 "messages": [
                     response
                 ]
@@ -93,7 +95,7 @@ async def call_model(
     else:
         return Command(
             update = {
-                "steps": -state.steps,
+                "orchestrator_steps": -state.orchestrator_steps,
                 "messages": [
                     response
                 ]
@@ -109,13 +111,13 @@ builder = StateGraph(State, input_schema=InputState, output_schema=OutputState, 
 
 # Build nodes
 builder.add_node(setup)
-builder.add_node(call_model)
-builder.add_node("tools", ToolNode(TOOLS))
+builder.add_node(call_orchestrator)
+builder.add_node("tools", ToolNode(ORCHESTRATOR_TOOLS))
 
 # Build edges
 builder.add_edge("__start__", "setup")
-builder.add_edge("setup", "call_model")
-builder.add_edge("tools", "call_model")
+builder.add_edge("setup", "call_orchestrator")
+builder.add_edge("tools", "call_orchestrator")
 
 # Compile the builder into an executable graph
 graph = builder.compile(name="Stats Agent")
