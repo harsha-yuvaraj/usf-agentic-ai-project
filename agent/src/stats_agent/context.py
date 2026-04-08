@@ -12,19 +12,45 @@ from . import prompts
 class Context:
     """The context for the agent."""
 
-    system_prompt: str = field(
-        default=prompts.SYSTEM_PROMPT,
+    orchestrator_prompt: str = field(
+        default=prompts.ORCHESTRATOR_PROMPT,
         metadata={
-            "description": "The system prompt to use for the agent's interactions. "
-            "This prompt sets the context and behavior for the agent."
+            "description": "The system prompt to use for the orchestrator agent."
+        },
+    )
+
+    analyst_prompt: str = field(
+        default=prompts.ANALYST_PROMPT,
+        metadata={
+            "description": "The system prompt to use for the analyst worker agent."
+        },
+    )
+
+    researcher_prompt: str = field(
+        default=prompts.RESEARCHER_PROMPT,
+        metadata={
+            "description": "The system prompt to use for the researcher worker agent."
         },
     )
 
     model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
         default="openai/gpt-5.4-mini",
         metadata={
-            "description": "The name of the language model to use for the agent's main interactions. "
-            "Should be in the form: provider/model-name."
+            "description": "The name of the language model to use for the orchestrator agent."
+        },
+    )
+
+    analyst_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
+        default="openai/gpt-5.4-mini",
+        metadata={
+            "description": "The name of the language model to use for the analyst worker agent."
+        },
+    )
+
+    researcher_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
+        default="openai/gpt-5.4-mini",
+        metadata={
+            "description": "The name of the language model to use for the researcher worker agent."
         },
     )
 
@@ -49,10 +75,17 @@ class Context:
         }
     )
 
-    max_steps: int = field(
+    max_orchestrator_steps: int = field(
+        default=10,
+        metadata={
+            "description": "The maximum number of steps the orchestrator agent can take in a single conversation."
+        },
+    )
+
+    max_worker_steps: int = field(
         default=5,
         metadata={
-            "description": "The maximum number of steps the agent can take in a single conversation."
+            "description": "The maximum number of steps a worker agent can take in a single delegation."
         },
     )
 

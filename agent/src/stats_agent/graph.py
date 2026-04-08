@@ -48,7 +48,7 @@ async def call_model(
     model = load_chat_model(runtime.context).bind_tools(TOOLS)
 
     # Format the system prompt. Customize this to change the agent's behavior.
-    system_message = runtime.context.system_prompt.format(
+    system_message = runtime.context.orchestrator_prompt.format(
         system_time=datetime.now(tz=UTC).isoformat(),
         file_names=state.file_names,
     )
@@ -65,7 +65,7 @@ async def call_model(
     print(response.to_json())
 
     # Handle the case when it's the last step and the model still wants to use a tool
-    if state.steps >= runtime.context.max_steps and response.tool_calls:
+    if state.steps >= runtime.context.max_orchestrator_steps and response.tool_calls:
         return Command(
             update = {
                 "steps": -state.steps,

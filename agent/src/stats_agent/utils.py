@@ -41,13 +41,14 @@ def get_message_text(msg: BaseMessage) -> str:
         return "".join(txts).strip()
 
 
-def load_chat_model(context: Context) -> BaseChatModel:
+def load_chat_model(context: Context, model_name: str = None) -> BaseChatModel:
     """Load a chat model from a fully specified name.
 
     Args:
-        fully_specified_name (str): String in the format 'provider/model'.
+        context: Context object.
+        model_name (str): Optional string in the format 'provider/model'. Defaults to context.model.
     """
-    fully_specified_name = context.model
+    fully_specified_name = model_name or context.model
 
     provider, model = fully_specified_name.split("/", maxsplit=1)
 

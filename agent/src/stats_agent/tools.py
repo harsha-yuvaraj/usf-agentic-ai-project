@@ -151,13 +151,4 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_i
         print(f"Execution failed: {e}")
         return {"error": str(e), "clear_previous_charts": False}, images, sandbox.sandbox_id if sandbox else None
 
-
-
 TOOLS: List[Callable[..., Any]] = [search, execute_code]
-         print(f"Execution failed: {e}")
-        return {"error": str(e)}, images, sandbox.sandbox_id if sandbox else None
-
-
-
-TOOLS: List[Callable[..., Any]] = [search, execute_code]
-    
