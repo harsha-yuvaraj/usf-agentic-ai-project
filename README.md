@@ -1,4 +1,4 @@
-# Agentic AI Project
+# Multi-Agent System for Statistical Data Analysis and Clinical Trials 
 
 ## Clone this repository:
 ```bash

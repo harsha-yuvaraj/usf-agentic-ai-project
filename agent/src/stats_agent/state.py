@@ -9,6 +9,8 @@ from langgraph.managed import IsLastStep
 from typing_extensions import Annotated
 from operator import add
 
+def update_sandbox(left: Optional[str], right: Optional[str]) -> Optional[str]:
+    return right if right is not None else left
 
 @dataclass
 class InputState:
@@ -33,7 +35,7 @@ class State(InputState):
     steps: Annotated[int, add] = field(default=0)
     images: Annotated[Sequence[str], add] = field(default_factory=list)
     file_names: Sequence[str] = field(default_factory=list)
-    sandbox_id: Optional[str] = field(default=None)
+    sandbox_id: Annotated[Optional[str], update_sandbox] = field(default=None)
 
 @dataclass
 class OutputState:
