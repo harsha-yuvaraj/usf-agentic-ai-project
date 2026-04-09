@@ -13,7 +13,7 @@ class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Stats Agent',
+      title: 'Multi-Agent System for Statistical Data Analysis and Clinical Trials',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.indigo,
@@ -21,47 +21,96 @@ class App extends StatelessWidget {
       ),
       home: Scaffold(
         appBar: AppBar(
-          title: const Text("Stats Agent"),
+          title: const Text("Multi-Agent System for Statistical Data Analysis and Clinical Trials"),
           elevation: 2,
         ),
         body: Consumer<LangGraphProvider>(
-          builder: (_, provider, _) => LlmChatView(
-            provider: provider,
-            welcomeMessage: 'Ask me anything about stats.',
-            suggestions: const [
-              'Summarize the columns in test_clinical_trial.csv',
-              'Plot BP_Before vs BP_After by Group.',
-              'Is there a significant difference in BP drop?',
-            ],
-            responseBuilder: (context, response) {
-              final images = provider.getImagesForText(response);
-              
-              // Strip the hidden gallery marker for clean text rendering
-              final markerIndex = response.lastIndexOf('\u200B');
-              final cleanResponse = markerIndex != -1 
-                  ? response.substring(0, markerIndex) 
-                  : response;
-              
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  MarkdownBody(
-                    data: cleanResponse,
-                    selectable: false,
-                    onTapLink: (_, href, __) {
-                      if (href != null) launchUrl(Uri.parse(href));
-                    },
-                  ),
-                  if (images.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    const Divider(height: 1),
-                    const SizedBox(height: 16),
-                    ImageCarousel(images: images),
-                  ],
+          builder: (_, provider, _) => Stack(
+            children: [
+              LlmChatView(
+                provider: provider,
+                welcomeMessage: 'Ask me anything about stats.',
+                suggestions: const [
+                  'Summarize the key statistics for my uploaded dataset.',
+                  'Perform a t-test to compare groups in this clinical trial.',
+                  'Identify any significant trends or outliers in the data.',
                 ],
-              );
-            },
+                responseBuilder: (context, response) {
+                  final images = provider.getImagesForText(response);
+
+                  // Strip the hidden gallery marker for clean text rendering
+                  final markerIndex = response.lastIndexOf('\u200B');
+                  final cleanResponse = markerIndex != -1
+                      ? response.substring(0, markerIndex)
+                      : response;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MarkdownBody(
+                        data: cleanResponse,
+                        selectable: false,
+                        onTapLink: (_, href, __) {
+                          if (href != null) launchUrl(Uri.parse(href));
+                        },
+                      ),
+                      if (images.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Divider(height: 1),
+                        const SizedBox(height: 16),
+                        ImageCarousel(images: images),
+                      ],
+                    ],
+                  );
+                },
+              ),
+              if (provider.currentAgentState != null)
+                Positioned(
+                  bottom: 90,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 8,
+                            offset: Offset(0, 4),
+                          )
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            provider.currentAgentState!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

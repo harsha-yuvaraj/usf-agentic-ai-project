@@ -1,4 +1,4 @@
-# Multi-agent system for data science, visualization, and clinical trials
+# Multi-Agent System for Statistical Data Analysis and Clinical Trials 
 
 ## Clone this repository:
 ```bash

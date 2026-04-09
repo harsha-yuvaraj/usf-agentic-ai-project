@@ -29,6 +29,14 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
 
   final List<ChatMessage> _history;
   String? _threadId;
+  String? _currentAgentState;
+
+  String? get currentAgentState => _currentAgentState;
+
+  void _setAgentState(String? state) {
+    _currentAgentState = state;
+    notifyListeners();
+  }
 
   // Track images separately since ChatMessage.attachments is final and
   // LLM messages don't support post-creation attachments in this version.
@@ -86,6 +94,7 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     final llmMessage = ChatMessage.llm();
 
     _history.addAll([userMessage, llmMessage]);
+    _currentAgentState = 'Thinking...';
     notifyListeners();
 
     try {
@@ -107,6 +116,8 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
       llmMessage.append(errorMsg);
       yield errorMsg;
     }
+
+    _currentAgentState = null;
 
     // Append unique hidden gallery marker if images were generated.
     // This prevents "carrying" images to other messages with same text.
@@ -158,6 +169,7 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
     final seenImageHashes = <int>{};
     String accumulatedAiText = '';
     final signaledToolCallIds = <String>{};
+    String currentMessageId = '';
 
     await for (final line in stream) {
       if (line.startsWith(':')) {
@@ -178,6 +190,12 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                 final msgChunk = dataJson[0];
                 if (msgChunk is Map<String, dynamic> && (msgChunk['role'] == 'ai' || msgChunk['type'] == 'ai' || msgChunk['type'] == 'AIMessageChunk')) {
                   
+                  final msgId = msgChunk['id']?.toString() ?? '';
+                  if (msgId.isNotEmpty && msgId != currentMessageId) {
+                    currentMessageId = msgId;
+                    accumulatedAiText = '';
+                  }
+
                   // Check if the agent is calling a tool dynamically
                   if (msgChunk['tool_calls'] != null && (msgChunk['tool_calls'] as List).isNotEmpty) {
                     for (final tool in msgChunk['tool_calls']) {
@@ -193,14 +211,13 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                            // if the agent has to retry its code multiple times.
                            _aiMessageImages[llmMessage] = [];
                            
-                           String actionText = 'using $toolName';
-                           if (toolName == 'execute_code') {
-                              actionText = 'executing code';
-                           } else if (toolName == 'search') {
-                              actionText = 'searching the web';
+                           if (toolName == 'delegate_to_analyst') {
+                              _setAgentState('Analyzing & Running Code...');
+                           } else if (toolName == 'delegate_to_researcher') {
+                              _setAgentState('Researching...');
+                           } else {
+                              _setAgentState('Thinking...');
                            }
-                           
-                           yield '\n\n> ⏳ *Agent is $actionText...*\n\n';
                         }
                       }
                     }
@@ -227,6 +244,9 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                       // Backend sent a cumulative string
                       final delta = newText.substring(accumulatedAiText.length);
                       if (delta.isNotEmpty) {
+                        if (_currentAgentState != 'Synthesizing response...') {
+                          _setAgentState('Synthesizing response...');
+                        }
                         yield delta;
                         accumulatedAiText = newText;
                       }
@@ -234,7 +254,9 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                       // Backend sent a delta chunk (or completely new text)
                       // Edge case: if we get the exact same chunk, we ignore it.
                       // Otherwise, we yield it and append it to our tracker.
-                    
+                      if (_currentAgentState != 'Synthesizing response...') {
+                        _setAgentState('Synthesizing response...');
+                      }
                       yield newText;
                       accumulatedAiText += newText;
                     }
