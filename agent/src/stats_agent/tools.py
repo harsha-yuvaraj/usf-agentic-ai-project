@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Annotated, Any, Callable, List, Optional, cast
+from typing import Annotated, Any, Callable, List, Literal, Optional, cast
 
 from e2b_code_interpreter import Sandbox
 from langchain.agents import create_agent
@@ -37,12 +37,20 @@ class ToolNodeSchema(BaseModel):
     """Arguments for the tool node."""
 
     code: str = Field(...,
-        description="The Python code to execute in the isolated environment.")
+        description="The code to execute in the isolated environment.")
+    language: Literal["python", "r"] = Field("python",
+        description="The language of the code. Use 'python' (default) or 'r'.")
     clear_previous_charts: bool = Field(False,
         description="Set to True if you made a mistake in a previous execution and want to clear the chart/visual history for this task. Keep False to accumulate charts/visuals.")
     
 
-def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_id: Optional[str] = None, clear_previous_charts: bool = False):
+def _run_in_sandbox(
+    code: str,
+    file_payloads: list[tuple[str, bytes]],
+    sandbox_id: Optional[str] = None,
+    clear_previous_charts: bool = False,
+    language: str = "python",
+):
     images = []
     sandbox = None
     
@@ -59,25 +67,20 @@ def _run_in_sandbox(code: str, file_payloads: list[tuple[str, bytes]], sandbox_i
         sandbox = Sandbox.create(timeout=3600)
         logger.info(f"Created new sandbox: {sandbox.sandbox_id}")
 
-    sandbox.create_code_context(
-        cwd="/home/user",
-        language="python",
-        request_timeout=60_000,
-    )
-
     try:
         for name, data in file_payloads:
-            # Push file directly from LangGraph server to E2B Cloud Sandbox
             absolute_path = f"/home/user/{name}"
             check_result = sandbox.commands.run(f"[ -f '{absolute_path}' ] && echo 'exists' || echo 'missing'")
             if "exists" not in check_result.stdout:
                 info = sandbox.files.write(absolute_path, data)
                 logger.info(f"Wrote file {info.name} to sandbox: {info.path}")
 
-        # Inject a safety wrapper to prevent matplotlib from leaking zombie plots between executions
-        safe_code = "import matplotlib.pyplot as plt\nplt.close('all')\n" + code
+        if language == "python":
+            safe_code = "import matplotlib.pyplot as plt\nplt.close('all')\n" + code
+        else:
+            safe_code = code
         
-        execution = sandbox.run_code(safe_code)
+        execution = sandbox.run_code(safe_code, language=language)
 
         if execution.error:
             logger.info("AI-generated code had an error.")
@@ -143,14 +146,15 @@ async def delegate_to_analyst(
                 }
             )
 
-    @tool(description="Execute Python code in an isolated environment. The environment automatically has access to the user's uploaded files in the current working directory (/home/user/).", args_schema=ToolNodeSchema)
-    async def local_execute_code(code: str, clear_previous_charts: bool = False) -> str:
+    @tool(description="Execute Python or R code in an isolated environment. The environment automatically has access to the user's uploaded files in the current working directory (/home/user/). Default language is Python; set language='r' for R code.", args_schema=ToolNodeSchema)
+    async def local_execute_code(code: str, language: str = "python", clear_previous_charts: bool = False) -> str:
         execution_result, images, new_sandbox_id = await asyncio.to_thread(
             _run_in_sandbox,
             code,
             file_payloads,
             current_sandbox_id[0],
-            clear_previous_charts
+            clear_previous_charts,
+            language,
         )
         
         current_sandbox_id[0] = new_sandbox_id
