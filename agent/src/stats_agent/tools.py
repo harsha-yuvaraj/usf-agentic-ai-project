@@ -5,7 +5,7 @@ from typing import Annotated, Any, Callable, List, Optional, cast
 
 from e2b_code_interpreter import Sandbox
 from langchain.agents import create_agent
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
 from langchain_tavily import TavilySearch
@@ -19,6 +19,18 @@ from stats_agent.state import State
 from stats_agent.utils import download_file, load_chat_model
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_ai_content(content: Any) -> str:
+    """Normalise AIMessage.content to a plain string."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and "text" in b
+        )
+    return str(content)
 
 
 class ToolNodeSchema(BaseModel):
@@ -111,19 +123,28 @@ async def delegate_to_analyst(
     
     accumulated_images = []
     current_sandbox_id = [sandbox_id]
-    
+
+    file_payloads = []
+    for name in state_file_names:
+        try:
+            data = await download_file(f"attachments/{name}", context)
+            file_payloads.append((name, data))
+        except Exception as e:
+            error_msg = f"System Error: Failed to download the uploaded file '{name}' from the backend storage. Please tell the user the file is inaccessible: {e}"
+            logger.error(error_msg)
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            content=error_msg,
+                            tool_call_id=tool_call_id,
+                        )
+                    ],
+                }
+            )
+
     @tool(description="Execute Python code in an isolated environment. The environment automatically has access to the user's uploaded files in the current working directory (/home/user/).", args_schema=ToolNodeSchema)
     async def local_execute_code(code: str, clear_previous_charts: bool = False) -> str:
-        file_payloads = []
-        for name in state_file_names:
-            try:
-                data = await download_file(f"attachments/{name}", context)
-                file_payloads.append((name, data))
-            except Exception as e:
-                error_msg = f"System Error: Failed to download the uploaded file '{name}' from the backend storage. Please tell the user the file is inaccessible: {e}"
-                logger.info(error_msg)
-                return json.dumps({"error": error_msg})
-                
         execution_result, images, new_sandbox_id = await asyncio.to_thread(
             _run_in_sandbox,
             code,
@@ -146,26 +167,42 @@ async def delegate_to_analyst(
     prompt = context.analyst_prompt.format(file_names=state_file_names)
     agent = create_agent(model=model, tools=[local_execute_code], system_prompt=prompt)
     
+    final_content: Optional[str] = None
     try:
-        res = await agent.ainvoke(
+        async for chunk in agent.astream(
             {"messages": [("user", task)]},
-            {"recursion_limit": 2 * context.max_worker_steps + 1}
-        )
-        final_content = res["messages"][-1].content
-        if isinstance(final_content, list):
-            # Parse block content if anthropic style
-            final_content = " ".join([b.get("text", "") for b in final_content if isinstance(b, dict) and "text" in b])
+            {"recursion_limit": 2 * context.max_worker_steps + 1},
+            stream_mode="values",
+        ):
+            for msg in reversed(chunk.get("messages", [])):
+                if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                    text = _extract_ai_content(msg.content)
+                    if text.strip():
+                        final_content = text
+                    break
     except GraphRecursionError:
-        final_content = "Reached execution limit. The agent took too many steps and was terminated."
+        if final_content:
+            final_content = (
+                "[Reached execution limit — partial results below]\n\n"
+                + final_content
+            )
+        else:
+            final_content = (
+                "Reached execution limit. The agent took too many steps "
+                "and was terminated."
+            )
     except Exception as e:
         logger.exception("Analyst execution failed")
         final_content = f"An error occurred during Analyst execution: {str(e)}"
+
+    if not final_content:
+        final_content = "The agent completed but produced no output."
     
     return Command(
         update={
             "messages": [
                 ToolMessage(
-                    content=str(final_content),
+                    content=final_content,
                     tool_call_id=tool_call_id,
                 )
             ],
@@ -204,25 +241,42 @@ async def delegate_to_researcher(
     model = load_chat_model(context, context.researcher_model)
     agent = create_agent(model=model, tools=[local_search], system_prompt=context.researcher_prompt)
     
+    final_content: Optional[str] = None
     try:
-        res = await agent.ainvoke(
+        async for chunk in agent.astream(
             {"messages": [("user", query)]},
-            {"recursion_limit": 2 * context.max_worker_steps + 1}
-        )
-        final_content = res["messages"][-1].content
-        if isinstance(final_content, list):
-            final_content = " ".join([b.get("text", "") for b in final_content if isinstance(b, dict) and "text" in b])
+            {"recursion_limit": 2 * context.max_worker_steps + 1},
+            stream_mode="values",
+        ):
+            for msg in reversed(chunk.get("messages", [])):
+                if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                    text = _extract_ai_content(msg.content)
+                    if text.strip():
+                        final_content = text
+                    break
     except GraphRecursionError:
-        final_content = "Reached execution limit. The agent took too many steps and was terminated."
+        if final_content:
+            final_content = (
+                "[Reached execution limit — partial results below]\n\n"
+                + final_content
+            )
+        else:
+            final_content = (
+                "Reached execution limit. The agent took too many steps "
+                "and was terminated."
+            )
     except Exception as e:
         logger.exception("Researcher execution failed")
         final_content = f"An error occurred during Researcher execution: {str(e)}"
+
+    if not final_content:
+        final_content = "The agent completed but produced no output."
     
     return Command(
         update={
             "messages": [
                 ToolMessage(
-                    content=str(final_content),
+                    content=final_content,
                     tool_call_id=tool_call_id,
                 )
             ]

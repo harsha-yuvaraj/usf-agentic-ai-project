@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Dict, Literal, cast
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
@@ -34,7 +34,7 @@ async def setup(
 
 async def call_orchestrator(
     state: State, runtime: Runtime[Context]
-) -> Command[Literal["__end__", "tools"]]:
+) -> Command[Literal["__end__", "tools", "call_orchestrator"]]:
     """Call the Orchestrator LLM.
 
     This function prepares the prompt, initializes the model, and processes the response.
@@ -66,19 +66,24 @@ async def call_orchestrator(
 
     logger.info(response.to_json())
 
-    # Handle the case when it's the last step and the model still wants to use a tool
+    # Handle the case when it's the last step and the model still wants to use a tool.
+    # Route back so the LLM can produce a real summary instead of a canned message.
     if state.orchestrator_steps >= runtime.context.max_orchestrator_steps and response.tool_calls:
+        tool_messages = [
+            ToolMessage(
+                content="System: You have reached the maximum number of reasoning steps. "
+                        "Do NOT call any more tools or delegate to workers. Summarize your "
+                        "findings so far and respond to the user immediately.",
+                tool_call_id=tc["id"],
+            )
+            for tc in response.tool_calls
+        ]
         return Command(
-            update = {
-                "orchestrator_steps": -state.orchestrator_steps,
-                "messages": [
-                    AIMessage(
-                        id=response.id,
-                        content="I have reached the maximum number of reasoning steps. Based on the analysis completed so far, here is a summary of what I found.",
-                    )
-                ]
+            update={
+                "orchestrator_steps": 1,
+                "messages": [response, *tool_messages],
             },
-            goto="__end__",
+            goto="call_orchestrator",
         )
     # Handle the case when model wants to use tool
     elif response.tool_calls:
