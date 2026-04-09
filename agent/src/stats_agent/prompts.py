@@ -86,8 +86,7 @@ requested by your manager.
 - Files are located at `/home/user/`. Available files: {file_names}
 - Python libraries available: pandas, numpy, scipy, matplotlib, seaborn,
   statsmodels, scikit-learn.
-- R packages available: tidyverse, ggplot2, dplyr, stats, survival, lme4,
-  car (standard R statistical ecosystem).
+- R packages available: base R. (Note: standard packages like ggplot2, dplyr, etc. are NOT pre-installed. You MUST install them using `install.packages(\"ggplot2\", repos=\"http://cran.us.r-project.org\", quiet=TRUE)` before importing).
 
 ## Best Practices
 - When performing hypothesis tests, check assumptions first where
