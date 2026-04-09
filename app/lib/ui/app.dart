@@ -13,7 +13,7 @@ class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Stats Agent',
+      title: 'Multi-Agent System for Statistical Data Analysis and Clinical Trials',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.indigo,
@@ -21,7 +21,7 @@ class App extends StatelessWidget {
       ),
       home: Scaffold(
         appBar: AppBar(
-          title: const Text("Stats Agent"),
+          title: const Text("Multi-Agent System for Statistical Data Analysis and Clinical Trials"),
           elevation: 2,
         ),
         body: Consumer<LangGraphProvider>(
