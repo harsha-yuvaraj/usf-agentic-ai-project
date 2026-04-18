@@ -19,6 +19,13 @@ class Context:
         },
     )
 
+    data_engineer_prompt: str = field(
+        default=prompts.DATA_ENGINEER_PROMPT,
+        metadata={
+            "description": "The system prompt to use for the data engineer worker agent."
+        },
+    )
+
     analyst_prompt: str = field(
         default=prompts.ANALYST_PROMPT,
         metadata={
@@ -37,6 +44,13 @@ class Context:
         default="openai/gpt-5.4-mini",
         metadata={
             "description": "The name of the language model to use for the orchestrator agent."
+        },
+    )
+
+    data_engineer_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
+        default="openai/gpt-5.4-mini",
+        metadata={
+            "description": "The name of the language model to use for the data engineer worker agent."
         },
     )
 
