@@ -29,7 +29,7 @@ class App extends StatelessWidget {
             children: [
               LlmChatView(
                 provider: provider,
-                welcomeMessage: 'Ask me anything about stats.',
+                welcomeMessage: 'Welcome! Upload your dataset and let our system crunch the numbers.',
                 suggestions: const [
                   'Summarize the key statistics for my uploaded dataset.',
                   'Perform a t-test to compare groups in this clinical trial.',

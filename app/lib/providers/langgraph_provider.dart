@@ -215,6 +215,8 @@ class LangGraphProvider extends LlmProvider with ChangeNotifier {
                               _setAgentState('Analyzing & Running Code...');
                            } else if (toolName == 'delegate_to_researcher') {
                               _setAgentState('Researching...');
+                           } else if (toolName == 'delegate_to_data_engineer') {
+                              _setAgentState('Cleaning & Profiling Data...');
                            } else {
                               _setAgentState('Thinking...');
                            }

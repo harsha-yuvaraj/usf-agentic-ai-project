@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Annotated, Any, Callable, List, Literal, Optional, cast
 
 from e2b_code_interpreter import Sandbox
@@ -107,6 +108,117 @@ def _run_in_sandbox(
 
 
 @tool
+async def delegate_to_data_engineer(
+    task: str,
+    config: RunnableConfig,
+    state: Annotated[State, InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Delegate a dataset cleaning, profiling, or Exploratory Data Analysis (EDA) task to the Data Engineer.
+    
+    Use this FIRST when a user uploads a dataset to prepare it for the Analyst.
+    """
+    sandbox_id = state.sandbox_id
+    state_file_names = state.file_names
+    context = cast(Context, config.get("configurable", {}).get("context")) or Context()
+    
+    accumulated_images = []
+    current_sandbox_id = [sandbox_id]
+
+    file_payloads = []
+    for name in state_file_names:
+        try:
+            data = await download_file(f"attachments/{name}", context)
+            file_payloads.append((name, data))
+        except Exception as e:
+            error_msg = f"System Error: Failed to download the uploaded file '{name}' from the backend storage. Please tell the user the file is inaccessible: {e}"
+            logger.error(error_msg)
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            content=error_msg,
+                            tool_call_id=tool_call_id,
+                        )
+                    ],
+                }
+            )
+
+    @tool(description="Execute Python or R code in an isolated environment. The environment automatically has access to the user's uploaded files in the current working directory (/home/user/). Default language is Python; set language='r' for R code.", args_schema=ToolNodeSchema)
+    async def local_execute_code(code: str, language: str = "python", clear_previous_charts: bool = False) -> str:
+        execution_result, images, new_sandbox_id = await asyncio.to_thread(
+            _run_in_sandbox,
+            code,
+            file_payloads,
+            current_sandbox_id[0],
+            clear_previous_charts,
+            language,
+        )
+        
+        current_sandbox_id[0] = new_sandbox_id
+        
+        if clear_previous_charts:
+            accumulated_images.clear()
+            
+        if not execution_result.get("error"):
+            accumulated_images.extend(images)
+            
+        return json.dumps(execution_result)
+
+    model = load_chat_model(context, context.data_engineer_model)
+    system_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    prompt = context.data_engineer_prompt.format(
+        file_names=state_file_names,
+        system_time=system_time
+    )
+    agent = create_agent(model=model, tools=[local_execute_code], system_prompt=prompt)
+    
+    final_content: Optional[str] = None
+    try:
+        async for chunk in agent.astream(
+            {"messages": [("user", task)]},
+            {"recursion_limit": 2 * context.max_worker_steps + 1},
+            stream_mode="values",
+        ):
+            for msg in reversed(chunk.get("messages", [])):
+                if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                    text = _extract_ai_content(msg.content)
+                    if text.strip():
+                        final_content = text
+                    break
+    except GraphRecursionError:
+        if final_content:
+            final_content = (
+                "[Reached execution limit — partial results below]\n\n"
+                + final_content
+            )
+        else:
+            final_content = (
+                "Reached execution limit. The agent took too many steps "
+                "and was terminated."
+            )
+    except Exception as e:
+        logger.exception("Data Engineer execution failed")
+        final_content = f"An error occurred during Data Engineer execution: {str(e)}"
+
+    if not final_content:
+        final_content = "The agent completed but produced no output."
+    
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    content=final_content,
+                    tool_call_id=tool_call_id,
+                )
+            ],
+            "images": accumulated_images,
+            "sandbox_id": current_sandbox_id[0],
+        }
+    )
+
+
+@tool
 async def delegate_to_analyst(
     task: str,
     config: RunnableConfig,
@@ -119,10 +231,7 @@ async def delegate_to_analyst(
     """
     sandbox_id = state.sandbox_id
     state_file_names = state.file_names
-    context = cast(Context, config.get("configurable", {}).get("context"))
-    if not context:
-         from stats_agent.context import Context as ContextCls
-         context = ContextCls()
+    context = cast(Context, config.get("configurable", {}).get("context")) or Context()
     
     accumulated_images = []
     current_sandbox_id = [sandbox_id]
@@ -226,10 +335,7 @@ async def delegate_to_researcher(
     
     Use this when you need to find domain-specific knowledge, guidelines, or statistical methodologies from the web.
     """
-    context = cast(Context, config.get("configurable", {}).get("context"))
-    if not context:
-         from stats_agent.context import Context as ContextCls
-         context = ContextCls()
+    context = cast(Context, config.get("configurable", {}).get("context")) or Context()
 
     @tool
     async def local_search(q: str) -> dict:
@@ -287,4 +393,5 @@ async def delegate_to_researcher(
         }
     )
 
-ORCHESTRATOR_TOOLS: List[Callable[..., Any]] = [delegate_to_analyst, delegate_to_researcher]
+
+ORCHESTRATOR_TOOLS: List[Callable[..., Any]] = [delegate_to_data_engineer, delegate_to_analyst, delegate_to_researcher]
