@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Annotated, Any, Callable, List, Literal, Optional, cast
 
 from e2b_code_interpreter import Sandbox
@@ -119,10 +120,7 @@ async def delegate_to_data_engineer(
     """
     sandbox_id = state.sandbox_id
     state_file_names = state.file_names
-    context = cast(Context, config.get("configurable", {}).get("context"))
-    if not context:
-         from stats_agent.context import Context as ContextCls
-         context = ContextCls()
+    context = cast(Context, config.get("configurable", {}).get("context")) or Context()
     
     accumulated_images = []
     current_sandbox_id = [sandbox_id]
@@ -168,7 +166,11 @@ async def delegate_to_data_engineer(
         return json.dumps(execution_result)
 
     model = load_chat_model(context, context.data_engineer_model)
-    prompt = context.data_engineer_prompt.format(file_names=state_file_names)
+    system_time = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    prompt = context.data_engineer_prompt.format(
+        file_names=state_file_names,
+        system_time=system_time
+    )
     agent = create_agent(model=model, tools=[local_execute_code], system_prompt=prompt)
     
     final_content: Optional[str] = None
@@ -229,10 +231,7 @@ async def delegate_to_analyst(
     """
     sandbox_id = state.sandbox_id
     state_file_names = state.file_names
-    context = cast(Context, config.get("configurable", {}).get("context"))
-    if not context:
-         from stats_agent.context import Context as ContextCls
-         context = ContextCls()
+    context = cast(Context, config.get("configurable", {}).get("context")) or Context()
     
     accumulated_images = []
     current_sandbox_id = [sandbox_id]
@@ -336,10 +335,7 @@ async def delegate_to_researcher(
     
     Use this when you need to find domain-specific knowledge, guidelines, or statistical methodologies from the web.
     """
-    context = cast(Context, config.get("configurable", {}).get("context"))
-    if not context:
-         from stats_agent.context import Context as ContextCls
-         context = ContextCls()
+    context = cast(Context, config.get("configurable", {}).get("context")) or Context()
 
     @tool
     async def local_search(q: str) -> dict:
@@ -396,5 +392,6 @@ async def delegate_to_researcher(
             ]
         }
     )
+
 
 ORCHESTRATOR_TOOLS: List[Callable[..., Any]] = [delegate_to_data_engineer, delegate_to_analyst, delegate_to_researcher]
