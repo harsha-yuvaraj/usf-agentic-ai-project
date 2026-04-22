@@ -124,15 +124,23 @@ firebase login
 ```
 cd services/functions
 ```
+
+5. Create a `.env` file.
+
+```bash
+cp .env.example .env
+```
+Open `.env` and add API keys as needed
+
 ```
 npm install
 ```
-5. Build project
+6. Build project
 ```
 npm run build
 ```
 
-6. Start emulators (need to be `services`):
+7. Start emulators (need to be `services`):
 ```
 cd ..
 ```
@@ -156,12 +164,19 @@ flutter doctor
 cd app
 ```
 
-2. Install packages
+2. Create a `.env` file.
+
+```bash
+cp .env.example .env
+```
+Open `.env` and add API keys as needed
+
+3. Install packages
 ```bash
 flutter pub get
 ```
 
-3. Run the Flutter app and target the Chrome device (web).
+4. Run the Flutter app and target the Chrome device (web).
 ```bash
 flutter run -d chrome
 ```
