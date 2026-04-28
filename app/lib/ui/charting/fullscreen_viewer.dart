@@ -16,17 +16,6 @@ class FullscreenViewer extends StatelessWidget {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(title ?? 'Chart Viewer', style: const TextStyle(color: Colors.white)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: () {
-              // TODO: Implement image saving
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Saving to gallery not yet implemented')),
-              );
-            },
-          ),
-        ],
       ),
       body: Hero(
         tag: bytes.hashCode.toString(),

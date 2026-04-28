@@ -1,7 +1,4 @@
-"""Define a custom Reasoning and Action agent.
-
-Works with a chat model with tool calling support.
-"""
+"""The Orchestrator-Worker multi-agent system for statistical analysis."""
 
 import logging
 from datetime import UTC, datetime
