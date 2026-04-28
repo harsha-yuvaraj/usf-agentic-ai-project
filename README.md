@@ -184,6 +184,12 @@ flutter run -d chrome
 ```
 This launches the Flutter web app and connects to the local agent server.
 
+## Sample Datasets
+
+For testing purposes, we included AI-generated sample datasets located in the `agent/sample_data` directory. These can be used to test our system:
+- `clinical_trial_results.csv`
+- `tech_company_growth.csv`
+
 ## Acknowledgments & Code Sources
 
 The following sources and tools were used in the development of this project:
