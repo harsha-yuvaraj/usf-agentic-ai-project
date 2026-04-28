@@ -1,5 +1,7 @@
 # Multi-Agent System for Statistical Data Analysis and Clinical Trials 
 
+**By: Harshavardan Yuvaraj and Dylan Girrens**
+
 ## Clone this repository:
 ```bash
 git clone git@github.com:harsha-yuvaraj/usf-agentic-ai-project.git
@@ -181,4 +183,14 @@ flutter pub get
 flutter run -d chrome
 ```
 This launches the Flutter web app and connects to the local agent server.
+
+## Acknowledgments & Code Sources
+
+The following sources and tools were used in the development of this project:
+
+*   **Core Architecture & Logic:** The core multi-agent logic, tool routing, and frontend-backend integration were primarily written by us.
+*   **Backend Framework:** The agent orchestration relies on [LangGraph](https://langchain-ai.github.io/langgraph/). The base project structure was initially adapted from LangGraph starter templates but heavily modified for our specific biostatistical use case.
+*   **Frontend UI:** The chat interface was built using the [flutter_ai_toolkit](https://pub.dev/packages/flutter_ai_toolkit) package.
+*   **Code Execution:** Python and R code execution is handled securely using the [E2B Code Interpreter](https://e2b.dev/).
+*   **AI Development Assistants:** We utilized Cursor AI IDE for debugging assistance and Gemini Code Assist (free version) for peer-reviewing our code during GitHub Pull Requests.
 
