@@ -190,6 +190,38 @@ For testing purposes, we included AI-generated sample datasets located in the `a
 - `clinical_trial_results.csv`
 - `tech_company_growth.csv`
 
+## TableBench evaluation (instruct-only)
+
+We evaluate the agent on the **TableBench** *direct-prompt* (`DP`) split using the workflow from the [official TableBench repository](https://github.com/TableBench/TableBench).
+
+1. Download the dataset (from the **project root**, so files land in `./datasets/`):
+
+```bash
+uvx hf download Multilingual-Multimodal-NLP/TableBench TableBench_DP.jsonl --repo-type dataset --local-dir ./datasets
+```
+
+If that Hub path or filename changes, use the dataset linked from the TableBench README / paper.
+
+2. Run our inference script (writes JSONL with `model_name` and `prediction`):
+
+```bash
+cd agent
+uv sync
+uv run tablebench-inference
+```
+
+Use `--input` / `--output` to override paths. Defaults: input `../datasets/TableBench_DP.jsonl`, output `../datasets/tablebench_inference_<model>.jsonl`.
+
+3. Clone TableBench and install its dependencies:
+
+```bash
+git clone https://github.com/TableBench/TableBench.git
+cd TableBench
+uv pip install -r requirements.txt
+```
+
+4. Copy your inference JSONL into `TableBench/eval_examples/inference_results/` (same layout as their examples), then run their parse and evaluation scripts as described in [their README](https://github.com/TableBench/TableBench#-how-to-evaluate-on-tablebench): `parse_tablebench_instruction_response_script.py`, then `eval_tablebench_script.py`. Metrics appear under `eval_examples/evaluation_results/`.
+
 ## Acknowledgments & Code Sources
 
 The following sources and tools were used in the development of this project:

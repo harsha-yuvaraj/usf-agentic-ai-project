@@ -58,6 +58,9 @@ lint.ignore = [
     "D417",
     "E501",
 ]
+[tool.pyright]
+extraPaths = ["src"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
 [tool.ruff.lint.pydocstyle]
@@ -71,4 +74,4 @@ dev = [
 ]
 
 [project.scripts]
-delete_thread = "stats_agent.delete_thread:main" 
+tablebench-inference = "stats_agent.run_tablebench_inference:main"
