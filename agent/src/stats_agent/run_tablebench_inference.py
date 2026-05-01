@@ -92,12 +92,6 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--limit", type=int, default=None, help="Max rows to run (after --start).")
     p.add_argument("--start", type=int, default=0, help="Skip first N rows.")
-    p.add_argument(
-        "--model",
-        type=str,
-        default=None,
-        help="Override orchestrator model (provider/model); default from env / Context.",
-    )
     p.add_argument("-v", "--verbose", action="store_true", help="DEBUG logging.")
     return p.parse_args()
 
@@ -115,7 +109,7 @@ async def _async_main() -> int:
         logger.error("Input file not found: %s", args.input)
         return 1
 
-    context = Context(model=args.model) if args.model else Context()
+    context = Context()
     model_name = context.model
 
     out_path = args.output
